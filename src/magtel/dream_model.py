@@ -19,10 +19,17 @@ _FIELDS = (
 )
 _PARTS = ("chassis", "axle", "wheel")
 _PROFILES = {
-    "straight": ("Street", "#ff693c", "#303b55"),
-    "beveled": ("Trail", "#fdaf42", "#343b42"),
-    "crowned": ("Orbit", "#b7ef58", "#384067"),
-    "ribbed": ("Rally", "#c390f4", "#3f3248"),
+    "ribbed": ("Off-Road", "#a5b453", "#333a32"),
+    "beveled": ("Racing", "#f24853", "#303b55"),
+    "balloon": ("Monster Truck", "#fb9a35", "#463241"),
+    "crowned": ("Lunar Explorer", "#8cacf8", "#323e60"),
+    "stepped": ("Cartoon Vehicle", "#ed84c2", "#754d99"),
+}
+_RECIPE_COLORS = {
+    "Lunar Rover": ("#b7ef58", "#384067"),
+    "Pocket Racer": ("#fdaf42", "#343b42"),
+    "Rescue Truck": ("#c390f4", "#3f3248"),
+    "Workshop Buggy": ("#ff693c", "#303b55"),
 }
 _COLORS = {
     "lime green": "#b7ef58", "lime": "#b7ef58", "green": "#5de399",
@@ -48,12 +55,13 @@ _COUNT_WORDS = {
 _WHEEL_COUNT = re.compile(
     rf"\b({'|'.join(_COUNT_WORDS)}|\d+)[\s\-‑]+wheel(?:s|ed|er)?\b"
 )
-_VEHICLE = re.compile(r"\b(?:car|rover|buggy|truck|vehicle|racer|wheels?|kart)\b")
+_VEHICLE = re.compile(r"\b(?:car|rover|buggy|truck|vehicle|racer|kart)\b")
 _CONCEPT_ONLY = {
     "powered motion": r"\b(?:battery|electric|motor(?:ized|ised)?|remote[ -]control)\b",
     "flight": r"\b(?:fl(?:y|ies|ying)|wings?|rockets?|jet engines?)\b",
     "lighting": r"\b(?:leds?|lights?|lighting)\b",
     "movable accessories": r"\b(?:arms?|claws?|cranes?|suspension|steering)\b",
+    "obstacle climbing": r"\bclimb(?:s|ing)?\b",
 }
 _FEASIBILITY = (
     "The workshop generates editable rolling vehicles from local recipes. "
@@ -116,7 +124,9 @@ def invent(prompt: str) -> dict:
         thickness = max(thickness, 13)
     if re.search(r"\blow[ -]profile wheels\b", idea):
         profile = "beveled"
-    _, color, tires = _PROFILES[profile]
+    if re.search(r"\b(?:monster truck|oversized wheels)\b", idea):
+        diameter, thickness, profile = max(diameter, 52), max(thickness, 16), "balloon"
+    color, tires = _RECIPE_COLORS[concept]
     if requested_color := re.search(r"\b(?:" + "|".join(_COLORS) + r")\b", idea):
         color = _COLORS[requested_color[0]]
     dimensions = {
@@ -179,7 +189,7 @@ def build(design: object) -> "DreamSpec":
     if type(design.get("axle_count")) is not int or design["axle_count"] not in (2, 3):
         raise DesignError("Use two or three axles for a four- or six-wheel toy.")
     profile = design.get("wheel_profile")
-    if not isinstance(profile, str) or profile not in _PROFILES:
+    if not isinstance(profile, str) or (profile != "straight" and profile not in _PROFILES):
         raise DesignError("Choose a supported wheel profile.")
     colors = design.get("colors")
     if not isinstance(colors, dict) or colors.keys() != set(_PARTS) or not all(
@@ -220,7 +230,7 @@ def from_car(car: CarSpec) -> dict:
 
 
 def variants(design: object) -> list[dict]:
-    """Swap wheel profiles and colorways within the same mounting envelope."""
+    """Offer five wheel profiles and colorways within the same mounting envelope."""
     current = build(design).design
     return [
         {
@@ -228,7 +238,6 @@ def variants(design: object) -> list[dict]:
             "colors": {**current["colors"], "chassis": body_color, "wheel": wheel_color},
         }
         for profile, (name, body_color, wheel_color) in _PROFILES.items()
-        if profile != current["wheel_profile"]
     ]
 
 
@@ -349,6 +358,11 @@ def _profiled_wheel(diameter: float, thickness: float, bore: float, profile: str
         "ribbed": ((0, 0.6), (0.14, 0), (0.23, 0), (0.34, 0.8), (0.40, 0.8),
                    (0.46, 0), (0.54, 0), (0.60, 0.8), (0.66, 0.8), (0.77, 0),
                    (0.86, 0), (1, 0.6)),
+        "balloon": ((0, 1.4), (0.08, 0.8), (0.20, 0.24), (0.34, 0), (0.66, 0),
+                    (0.80, 0.24), (0.92, 0.8), (1, 1.4)),
+        "stepped": ((0, 0.55), (0.16, 0.55), (0.16, 1.25), (0.30, 1.25),
+                    (0.30, 0), (0.70, 0), (0.70, 1.25), (0.84, 1.25),
+                    (0.84, 0.55), (1, 0.55)),
     }
     radius = diameter / 2
     relief = min(diameter * 0.06, (radius - bore / 2) / 2, thickness / 3)

@@ -41,6 +41,14 @@ class DreamModelTests(unittest.TestCase):
         notes = " ".join(prototype["notes"])
         for detail in ("wheel count", "powered motion", "flight", "lighting", "retainers"):
             self.assertIn(detail, notes)
+        fantasy = invent("A lime green flying dragon with wheels")
+        self.assertIn("translated into a rolling buggy", " ".join(fantasy["notes"]))
+
+    def test_monster_truck_gets_oversized_wheels_and_climbing_note(self):
+        monster = invent("A little monster truck with oversized wheels that can climb over obstacles")
+        self.assertGreater(monster["wheel_diameter"], invent("A rescue truck")["wheel_diameter"])
+        self.assertEqual(monster["wheel_profile"], "balloon")
+        self.assertIn("obstacle climbing", " ".join(monster["notes"]))
 
     def test_three_bore_chassis_is_one_watertight_stl(self):
         spec = build(invent("Six-wheel rover with wheelbase 90 mm and chassis height 18.6396 mm"))
@@ -71,8 +79,10 @@ class DreamModelTests(unittest.TestCase):
         original = build(source)
         original_parts = original.part_meshes()
         alternatives = variants(source)
-        self.assertEqual(len(alternatives), 3)
-        self.assertEqual(len({d["wheel_profile"] for d in alternatives}), 3)
+        self.assertEqual([d["variant"] for d in alternatives], [
+            "Off-Road", "Racing", "Monster Truck", "Lunar Explorer", "Cartoon Vehicle",
+        ])
+        wheel_meshes = set()
         for alternative in alternatives:
             with self.subTest(variant=alternative["variant"]):
                 spec = build(alternative)
@@ -82,9 +92,11 @@ class DreamModelTests(unittest.TestCase):
                 self.assertEqual(spec.dimensions(), original.dimensions())
                 self.assertEqual(spec.fit(), original.fit())
                 self.assertEqual(spec.bom(), original.bom())
-                self.assertNotEqual(original_parts["wheel"], parts["wheel"])
+                wheel_meshes.add(stl_bytes(parts["wheel"]))
+                self.assertNotEqual(source["colors"], alternative["colors"])
                 self.assertEqual(bounds(original_parts["wheel"]), bounds(parts["wheel"]))
                 self.assert_closed_stl(parts["wheel"], euler=0)
+        self.assertEqual(len(wheel_meshes), len(alternatives))
 
     def test_incompatible_edits_fail_before_meshing(self):
         design = invent("Six-wheel moon rover")
