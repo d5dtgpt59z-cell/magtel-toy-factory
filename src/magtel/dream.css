@@ -79,7 +79,7 @@ main { max-width: 1504px; margin: 0 auto; padding: 28px 24px 0; }
   align-items: start;
 }
 .idea-panel, .workspace, .variants, .exports { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
-.idea-panel { padding: 24px; }
+.idea-panel { padding: 21px 24px; }
 .eyebrow, .label { font: 800 10px/1.4 var(--mono); letter-spacing: .11em; }
 .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--muted); }
 .index {
@@ -93,18 +93,18 @@ main { max-width: 1504px; margin: 0 auto; padding: 28px 24px 0; }
 }
 h1 {
   margin: 15px 0 12px;
-  font-size: clamp(51px, 5.5vw, 96px);
+  font-size: clamp(51px, 4.9vw, 80px);
   font-weight: 900;
   letter-spacing: -.091em;
   line-height: .87;
 }
 h1 span { color: #c54522; }
 .intro { color: var(--muted); max-width: 28ch; font-size: 15px; line-height: 1.45; }
-#idea-form { margin-top: 23px; }
+#idea-form { margin-top: 18px; }
 #idea-form > label { display: block; margin-bottom: 7px; }
 #idea {
   width: 100%;
-  min-height: 98px;
+  min-height: 83px;
   padding: 11px;
   resize: vertical;
   background: #fbfbf6;
@@ -129,7 +129,7 @@ h1 span { color: #c54522; }
 .primary:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #a13c21; }
 .invent { margin-top: 7px; }
 .invent span:last-child { font-size: 21px; line-height: 1; }
-.idea-examples { margin-top: 22px; }
+.idea-examples { margin-top: 17px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .chip {
   padding: 6px 8px;
@@ -138,7 +138,7 @@ h1 span { color: #c54522; }
   font-weight: 700;
 }
 .chip:hover:not(:disabled), .small-button:hover:not(:disabled) { background-color: #e8eee6; }
-.interpretation { margin-top: 20px; padding: 11px 12px; border-left: 3px solid #759c86; background: #eef3eb; }
+.interpretation { margin-top: 16px; padding: 11px 12px; border-left: 3px solid #759c86; background: #eef3eb; }
 #concept { margin: 5px 0 7px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 details { font-size: 12px; line-height: 1.45; }
 summary { cursor: pointer; font-weight: 750; }
@@ -147,19 +147,19 @@ summary { cursor: pointer; font-weight: 750; }
 .local-note { display: flex; align-items: center; gap: 7px; margin-top: 17px; color: var(--muted); font-size: 11px; }
 .local-note span { color: #29674d; }
 
-.workspace { overflow: clip; }
+.workspace { display: grid; grid-template-rows: auto auto 1fr; overflow: clip; }
 .workspace-head, .module-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-.workspace-head { min-height: 89px; padding: 15px 19px; }
+.workspace-head { grid-row: 1; min-height: 89px; padding: 15px 19px; }
 h2 { margin-top: 5px; font-size: clamp(21px, 2.6vw, 36px); line-height: 1.06; font-weight: 850; letter-spacing: -.052em; overflow-wrap: anywhere; }
 .mode-switch { display: inline-flex; flex: none; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }
 .mode-switch button { padding: 7px 10px; border-color: transparent; background: transparent; font-size: 12px; font-weight: 800; }
 .mode-switch button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
-.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(216px, 27%); border-top: 1px solid var(--line); }
+.bench { grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr) minmax(216px, 27%); border-top: 1px solid var(--line); }
 .viewport { display: grid; grid-template-rows: minmax(380px, 1fr) auto; min-width: 0; }
 .canvas-wrap {
   position: relative;
@@ -238,7 +238,8 @@ select { width: 100%; min-height: 34px; padding: 6px 7px; font-size: 13px; font-
 .test-controls { justify-content: flex-start; margin-top: 9px; }
 .telemetry { margin: 14px 0; font-size: 12px; }
 .simulation-limits p { margin-top: 6px; color: var(--muted); }
-.message { margin: 0 12px 9px; padding: 8px 9px; border-radius: 4px; border: 1px solid #95b9a5; background: #e9f3eb; font-size: 13px; overflow-wrap: anywhere; }
+.message { grid-row: 2; margin: 0 12px 9px; padding: 8px 9px; border-radius: 4px; border: 1px solid #95b9a5; background: #e9f3eb; font-size: 13px; overflow-wrap: anywhere; }
+.module-message { margin: 9px 0 0; }
 .message.error { border-color: #c48168; color: #783416; background: #fff0e4; }
 
 .variants, .exports { padding: 16px 18px; }
@@ -267,6 +268,10 @@ footer {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font: 700 10px/1.4 var(--mono);
+}
+
+@media (min-width: 971px) {
+  .workspace { align-self: stretch; }
 }
 
 @media (max-width: 1150px) {

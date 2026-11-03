@@ -45,9 +45,10 @@ const profileLabels = {
   crowned: "Crowned tread",
   ribbed: "Ribbed tread",
 };
+const axleLengthLink = {width: 1, wheel_gap: 2, wheel_thickness: 2};
 const mm = (value) => `${Number(value.toFixed(2))} mm`;
-const message = (content, error = false) => {
-  const status = $("#workbench-message");
+const message = (content, error = false, target = "#workbench-message") => {
+  const status = $(target);
   status.textContent = content;
   status.hidden = !content;
   status.classList.toggle("error", error);
@@ -79,15 +80,15 @@ function updateControls() {
   $("#explode").disabled = !modelReady || current.mode !== "build";
 }
 
-async function perform(work, pending) {
+async function perform(work, pending, target) {
   if (current.busy) return;
   current.busy = true;
   updateControls();
-  message(pending);
+  message(pending, false, target);
   try {
     await work();
   } catch (error) {
-    message(error.message || "The workshop could not complete that action.", true);
+    message(error.message || "The workshop could not complete that action.", true, target);
     if (!current.model) $("#toy-title").textContent = "Start with an idea";
   } finally {
     current.busy = false;
@@ -104,10 +105,15 @@ try {
     },
     onEdit: ({field, value}) => {
       if (!current.model || current.mode !== "build" || !Number.isFinite(value)) return;
-      const design = {...current.model.design, [field]: Number(value.toFixed(2))};
+      const previous = current.model.design;
+      const design = {...previous, [field]: Number(value.toFixed(2))};
+      const multiplier = axleLengthLink[field];
+      if (multiplier) {
+        design.axle_length = Number((previous.axle_length + multiplier * (design[field] - previous[field])).toFixed(2));
+      }
       perform(async () => {
         install(await request("design", {design}));
-        message("Dimension updated.");
+        message(multiplier ? "Dimension and axle length updated to keep the same overhang." : "Dimension updated.");
       }, "Checking the edited geometry…");
     },
     onUnavailable: (warning) => {
@@ -150,9 +156,9 @@ function selectPart(id) {
   }));
   $("#part-color").value = design.colors[kind];
   $("#part-note").textContent = {
-    chassis: "The chassis dimensions include the axle bores.",
+    chassis: "Dragging the width also adjusts axle length.",
     axle: "Edits apply to all axles. Wheelbase spans the front and rear axle centers.",
-    wheel: "Edits apply to all wheels. Body gap moves them along the axle.",
+    wheel: "Edits apply to all wheels. Dragging gap or thickness also adjusts axle length.",
   }[kind];
   updateControls();
 }
@@ -171,18 +177,22 @@ function fitDetails(fit) {
 
 function install(model, {fresh = false, variant = null} = {}) {
   current.model = model;
-  if (variant === null) current.variants = [];
+  if (variant === null) {
+    current.variants = [];
+    message("", false, "#variant-status");
+  }
   current.activeVariant = variant;
   renderVariants();
   const {design, parts, fit, dimensions} = model;
   $("#toy-title").textContent = design.name;
-  $("#concept").textContent = design.concept;
+  $("#concept").textContent = `${design.concept} recipe · ${design.axle_count * 2} wheels.`;
   $("#notes").replaceChildren(...design.notes.map((note) => {
     const item = document.createElement("li");
     item.textContent = note;
     return item;
   }));
   $("#assumptions").hidden = !design.notes.length;
+  if (fresh) $("#assumptions").open = design.notes.length > 2;
   $("#interpretation").hidden = false;
   $("#part-count").textContent = String(parts.length).padStart(2, "0");
   $("#part-select").replaceChildren(...parts.map((part) => new Option(part.name, part.id)));
@@ -223,16 +233,24 @@ function renderVariants() {
     button.append(swatch, title, profile);
     button.addEventListener("click", () => perform(async () => {
       install(await request("design", {design}), {variant: index});
-      message(`${title.textContent} variant installed.`);
-    }, "Checking modular fit…"));
+      message(`${title.textContent} variant installed.`, false, "#variant-status");
+      revealWorkbench();
+    }, "Checking modular fit…", "#variant-status"));
     return button;
   }));
+}
+
+function revealWorkbench() {
+  if (!window.matchMedia("(max-width: 970px)").matches) return;
+  $(".workspace").scrollIntoView({block: "start"});
+  $("#toy-title").focus({preventScroll: true});
 }
 
 function invent(prompt, preview = false) {
   return perform(async () => {
     install(await request("invent", {prompt}), {fresh: true});
     message(preview ? "" : "Invention ready. Choose a part to start building.");
+    if (!preview) revealWorkbench();
   }, preview ? "Opening the example assembly…" : "Turning your idea into editable geometry…");
 }
 
@@ -290,7 +308,7 @@ function toggleTest() {
   $("#test-result").textContent = "Playtest running.";
   let last = performance.now();
   const step = (now) => {
-    const sample = current.test.advance(Math.min(0.1, (now - last) / 1000));
+    const sample = current.test.advance(Math.min(0.1, (now - last) / 1000) * 0.55);
     last = now;
     drawTest(sample);
     if (sample.finished) {
@@ -354,8 +372,8 @@ $("#variants-button").addEventListener("click", () => perform(async () => {
   current.variants = variants;
   current.activeVariant = null;
   renderVariants();
-  message(`${variants.length} compatible variants ready in the Swap Lab.`);
-}, "Generating compatible variants…"));
+  message(`${variants.length} compatible variants ready.`, false, "#variant-status");
+}, "Generating compatible variants…", "#variant-status"));
 
 $("#save").addEventListener("click", () => {
   const json = JSON.stringify(current.model.design, null, 2) + "\n";
@@ -377,13 +395,14 @@ $("#file").addEventListener("change", (event) => {
     const model = await request("import", {design});
     install(model, {fresh: true});
     $("#idea").value = model.design.prompt;
-    message("Design loaded.");
-  }, "Opening design…");
+    message("Design loaded.", false, "#file-status");
+    revealWorkbench();
+  }, "Opening design…", "#file-status");
 });
 $("#export").addEventListener("click", () => perform(async () => {
   const blob = await request("export", {design: current.model.design});
   download(blob, "magtel-invention.zip");
-  message("Invention sheet ZIP downloaded.");
-}, "Packaging the sheet, renders, and STL meshes…"));
+  message("Invention sheet ZIP downloaded.", false, "#file-status");
+}, "Packaging the sheet, renders, and STL meshes…", "#file-status"));
 
 invent(starter, true);
