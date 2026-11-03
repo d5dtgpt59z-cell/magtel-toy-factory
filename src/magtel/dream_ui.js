@@ -47,6 +47,7 @@ const profileLabels = {
   balloon: "Balloon tread",
   stepped: "Stepped tread",
 };
+const bodyLabels = {lunar: "Lunar body", racer: "Racer body", truck: "Truck body"};
 const axleLengthLink = {width: 1, wheel_gap: 2, wheel_thickness: 2};
 const mm = (value) => `${Number(value.toFixed(2))} mm`;
 const message = (content, error = false, target = "#workbench-message") => {
@@ -242,13 +243,15 @@ function renderVariants() {
     const swatch = document.createElement("span");
     swatch.className = "variant-swatch";
     swatch.setAttribute("aria-hidden", "true");
-    for (const color of Object.values(design.colors)) {
+    const bodyLabel = bodyLabels[design.body_style];
+    const colors = bodyLabel ? [...Object.values(design.body_colors), design.colors.wheel] : Object.values(design.colors);
+    for (const color of colors) {
       const chip = document.createElement("i");
       chip.style.backgroundColor = color;
       swatch.append(chip);
     }
     const profile = document.createElement("small");
-    profile.textContent = profileLabels[design.wheel_profile];
+    profile.textContent = [profileLabels[design.wheel_profile], bodyLabel].filter(Boolean).join(" · ");
     button.append(swatch, title, profile);
     button.addEventListener("click", () => perform(async () => {
       install(await request("design", {design}), {variant: index});
