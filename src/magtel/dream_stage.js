@@ -80,6 +80,7 @@
   function renderer(gl) {
     const vertex = shader(gl, gl.VERTEX_SHADER, `
       attribute vec3 aPosition, aNormal;
+      attribute float aPaint;
       uniform vec3 uOffset, uTarget, uRight, uUp;
       uniform mediump vec3 uToward;
       uniform vec4 uShadow;
@@ -87,6 +88,7 @@
       uniform float uDepth, uRadius;
       varying mediump vec3 vNormal;
       varying mediump vec2 vShadow;
+      varying lowp float vPaint;
       vec2 rotate(vec2 p, vec2 cs) {
         return vec2(p.x * cs.x - p.y * cs.y, p.x * cs.y + p.y * cs.x);
       }
@@ -103,17 +105,19 @@
         gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
           -dot(p, uToward) / uDepth, 1.0);
         vNormal = n;
+        vPaint = aPaint;
       }`);
     const fragment = shader(gl, gl.FRAGMENT_SHADER, `
       precision mediump float;
       varying mediump vec3 vNormal;
       varying mediump vec2 vShadow;
+      varying lowp float vPaint;
       uniform vec4 uColor;
-      uniform vec3 uToward;
+      uniform vec3 uToward, uPaintColor;
       uniform bool uLit, uSoft;
       uniform float uSelected, uFinish;
       void main() {
-        vec3 color = uColor.rgb;
+        vec3 color = mix(uColor.rgb, uPaintColor, vPaint);
         float alpha = uColor.a;
         if (uLit) {
           vec3 n = normalize(vNormal);
@@ -122,12 +126,17 @@
           vec3 rim = normalize(vec3(-0.65, -0.37, 0.72));
           float diffuse = max(dot(n, key), 0.0);
           float facing = max(dot(n, uToward), 0.0);
-          float specular = pow(max(dot(n, normalize(key + uToward)), 0.0), 16.0 + 28.0 * uFinish);
+          float finish = mix(uFinish, 0.78, vPaint);
+          float specular = pow(max(dot(n, normalize(key + uToward)), 0.0), 16.0 + 28.0 * finish);
           float rimLight = max(dot(n, rim), 0.0) * pow(1.0 - facing, 2.0);
+          vec3 reflected = reflect(-uToward, n);
+          float strip = pow(max(dot(reflected, key), 0.0), 5.0)
+            * pow(1.0 - min(1.0, abs(reflected.x - key.x)), 18.0);
           float lighting = 0.47 + 0.34 * diffuse + 0.15 * max(dot(n, fill), 0.0) + 0.06 * n.z;
           color = color * lighting
-            + (0.045 + 0.24 * uFinish) * specular * vec3(1.0, 0.96, 0.9)
-            + (0.045 + 0.12 * uFinish) * rimLight * vec3(0.8, 0.91, 1.0);
+            + (0.045 + 0.24 * finish) * specular * vec3(1.0, 0.96, 0.9)
+            + (0.045 + 0.12 * finish) * rimLight * vec3(0.8, 0.91, 1.0)
+            + 0.09 * finish * strip * vec3(0.88, 0.94, 1.0);
           color = mix(color, vec3(1.0, 0.7, 0.33), uSelected * (0.13 + 0.12 * (1.0 - facing)));
         }
         if (uSoft) {
@@ -151,9 +160,10 @@
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const position = gl.getAttribLocation(program, "aPosition");
     const normal = gl.getAttribLocation(program, "aNormal");
+    const paint = gl.getAttribLocation(program, "aPaint");
     const u = Object.fromEntries(
       ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit",
-        "Pitch", "Spin", "Hub", "Radius", "Selected", "Finish", "Soft", "Shadow"]
+        "Pitch", "Spin", "Hub", "Radius", "Selected", "Finish", "Soft", "Shadow", "PaintColor"]
         .map(name => [name, gl.getUniformLocation(program, "u" + name)])
     );
 
@@ -164,21 +174,28 @@
       return handle;
     }
 
-    function attribute(index, handle) {
+    function attribute(index, handle, size = 3) {
       gl.bindBuffer(gl.ARRAY_BUFFER, handle);
       gl.enableVertexAttribArray(index);
-      gl.vertexAttribPointer(index, 3, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribPointer(index, size, gl.FLOAT, false, 0, 0);
     }
 
     return {
-      mesh(vertices, {lit = true, mode = gl.TRIANGLES, creaseCos = null} = {}) {
+      mesh(vertices, {lit = true, mode = gl.TRIANGLES, creaseCos = null, coating = null} = {}) {
+        let mask = null;
+        if (coating) {
+          const values = new Float32Array(vertices.length / 3);
+          for (const face of coating.faces) values.fill(1, face * 3, face * 3 + 3);
+          mask = buffer(values);
+        }
         return {position: buffer(vertices), normal: lit ? buffer(normals(vertices, creaseCos)) : null,
-          count: vertices.length / 3, mode};
+          mask, paintColor: coating ? rgb(coating.color) : noShift, count: vertices.length / 3, mode};
       },
       free(mesh) {
         if (!mesh) return;
         gl.deleteBuffer(mesh.position);
         gl.deleteBuffer(mesh.normal);
+        gl.deleteBuffer(mesh.mask);
       },
       frame(view, width, height) {
         gl.viewport(0, 0, width, height);
@@ -196,6 +213,9 @@
         attribute(position, mesh.position);
         if (mesh.normal) attribute(normal, mesh.normal);
         else gl.disableVertexAttribArray(normal);
+        if (mesh.mask) attribute(paint, mesh.mask, 1);
+        else gl.disableVertexAttribArray(paint);
+        gl.uniform3fv(u.PaintColor, mesh.paintColor);
         gl.uniform4f(u.Color, ...color, alpha);
         gl.uniform3fv(u.Offset, offset);
         gl.uniform2f(u.Pitch, Math.cos(pitch), Math.sin(pitch));
@@ -393,10 +413,11 @@
         const wheel = part.id.endsWith("-wheel");
         const axle = part.id.endsWith("-axle");
         const body = part.kind === "body" || part.id.startsWith("body-");
-        const creaseCos = body ? 0.85 : wheel || axle ? 0.9 : null;
+        const creaseCos = body ? 0.85 : wheel && part.paint ? 0.72 : wheel || axle ? 0.9 : null;
         const finish = wheel ? 0.19 : axle ? 0.8 : body ? 0.56 : 0.37;
         const item = {...part, explode: part.explode || noShift, color: rgb(part.color),
-          mesh: this.renderer.mesh(part.vertices, {creaseCos}), bounds: bounds(part.vertices), finish};
+          mesh: this.renderer.mesh(part.vertices, {creaseCos, coating: part.paint}),
+          bounds: bounds(part.vertices), finish};
         if (wheel) item.mark = this.renderer.mesh(wheelMark(item, design.wheel_diameter / 2), {lit: false});
         return item;
       });
@@ -469,8 +490,9 @@
       if (action === "near") this.zoom = clamp(this.zoom * 1.19, 0.44, 4);
       if (action === "far") this.zoom = clamp(this.zoom / 1.19, 0.44, 4);
       if (action === "reset") {
-        this.yaw = this.playtest ? -1.15 : initialYaw;
-        this.pitch = initialPitch;
+        const stream = this.design?.body_style === "stream" && !this.playtest;
+        this.yaw = this.playtest ? -1.15 : stream ? 1.18 : initialYaw;
+        this.pitch = stream ? 0.36 : initialPitch;
         this.zoom = 1;
       }
       this.schedule();
