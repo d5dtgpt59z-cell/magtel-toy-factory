@@ -18,36 +18,42 @@ studio and exports work without internet access after installation.
 1. **Invent.** Try “Design a futuristic six-wheeled moon rover for kids.”
    Dream Mode maps plain language to a supported vehicle and shows which
    details became geometry and which remain concept notes. Try a compact
-   racer or a chunky trail truck for a different starting point.
+   racer or a chunky rescue truck for a different starting point. New designs
+   include shaped body pieces that regenerate when the chassis changes size.
 2. **Build.** Pick a part in the viewport and drag its handles. The inspector
    offers the same controls as numeric fields, plus colors and nominal fit.
    Axle placement, wheel dimensions, and wheel gaps are linked across the
-   assembly. Invalid changes leave the last valid geometry in place.
+   assembly. Choose a body style and edit its color groups in the inspector.
+   Invalid changes leave the last valid geometry in place.
 3. **Play.** Push the toy across a flat track, coast down a ramp, or run a
    ramp test with a barrier. The
    playtest shows motion, an estimated impact response, and a stability
    estimate alongside the model.
 4. **Remix.** Try Off-Road, Racing, Monster Truck, Lunar Explorer, or Cartoon
-   Vehicle wheel profiles and palettes. Variants keep the wheel bore,
-   mounting width, and outside diameter, so they use the same axle and chassis.
+   Vehicle wheel profiles and palettes. Variants keep the axle positions,
+   wheel bore, mounting width, and outside diameter. Styled variants can also
+   change the body kit and carrier silhouette.
 5. **Export.** Download an invention ZIP and extract it. Open
    `invention-sheet.html` to view the hero render, exploded view, overall and
    part dimensions, nominal clearances, and bill of materials. Use the
    sheet's **Print or save PDF** control to share a printable copy. The archive
-   also includes standalone PNG renders, an offline interactive preview, the
-   editable JSON, and separate chassis, axle, and wheel STLs.
+   also includes standalone PNG renders, a dimensioned top and side drawing,
+   an offline interactive preview, editable JSON, and separate STLs for the
+   rolling chassis and any body pieces.
 
 **Scope.** The offline prompt interpreter builds symmetric four- or six-wheel
 vehicle prototypes from known parts and dimensions. The studio regenerates
-triangle meshes from those parameters. Styling and unsupported mechanisms
-remain concept notes. The virtual test estimates longitudinal motion with
+triangle meshes from those parameters. Rover, racer, and truck body kits use separate lofted solids with flat
+mounting surfaces. They require adhesive or retention before handling.
+Unsupported styling and mechanisms remain concept notes. The virtual test estimates longitudinal motion with
 simple geometry and assumed surface parameters. Its rolling and barrier
 responses and static stability indicator are for comparing prototypes. Physical
 testing is needed to establish impact behavior, printed fit, retention, strength,
 and child safety. STL coordinates use millimeters.
 
 Open complete v0.3 car assemblies and Dream designs using the studio's file
-picker. Dream designs use their own versioned JSON marker. The existing part
+picker. Saved designs from before body styles open as bare chassis. Dream
+designs use their own versioned JSON marker. The existing part
 and assembly formats still work in the CLI, including the standalone
 `preview` command. Dream files also work with `show`, `fit`, `preview`, and
 `export`. Use the browser studio to edit Dream dimensions.

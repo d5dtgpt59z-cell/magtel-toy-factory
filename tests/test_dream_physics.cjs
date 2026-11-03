@@ -67,3 +67,10 @@ test("fixed-step results match across playback rates and large supported designs
     assert.ok(Number.isFinite(fast.supportMargin) && fast.supportMargin > 0);
   }
 });
+
+test("a taller body reduces the estimated longitudinal stability margin on a ramp", () => {
+  const bare = create(rover, "ramp").advance(0.25);
+  const tall = create(rover, "ramp", 52).advance(0.25);
+  assert.equal(tall.pitch, bare.pitch);
+  assert.ok(tall.supportMargin < bare.supportMargin);
+});

@@ -48,7 +48,11 @@ class DreamWorkflowTests(unittest.TestCase):
     def test_invent_edit_variant_export_and_reopen(self):
         status, _, made = self.request("/api/invent", {"prompt": "Design a blue six-wheeled moon rover."})
         self.assertEqual(status, 200)
-        self.assertEqual(len(made["parts"]), 10)
+        body_parts = [part for part in made["parts"] if part.get("kind") == "body"]
+        self.assertEqual(len(made["parts"]) - len(body_parts), 10)
+        self.assertTrue(body_parts)
+        self.assertGreater(made["dimensions"]["height"], made["design"]["wheel_diameter"])
+        self.assertTrue(all(part["dimensions"]["height"] > 0 for part in body_parts))
         design = made["design"]
         edited_design = {**design, "length": design["length"] + 4}
         status, _, edited = self.request("/api/design", {"design": edited_design})
@@ -64,14 +68,20 @@ class DreamWorkflowTests(unittest.TestCase):
         variant = options["variants"][0]
         self.assertEqual(variant["wheel_bore"], design["wheel_bore"])
         self.assertNotEqual(variant["wheel_profile"], design["wheel_profile"])
+        status, _, variant_model = self.request("/api/design", {"design": variant})
+        self.assertEqual(status, 200)
+        self.assertNotEqual(variant["body_style"], design["body_style"])
+        body_ids = {part["id"] for part in variant_model["parts"] if part.get("kind") == "body"}
+        self.assertTrue(body_ids)
         status, headers, body = self.request("/api/export", {"design": variant})
         self.assertEqual(status, 200)
         self.assertIn("attachment", headers["Content-Disposition"])
 
         with ZipFile(io.BytesIO(body)) as archive, TemporaryDirectory() as folder:
             self.assertEqual(set(archive.namelist()), {
-                "invention-sheet.html", "hero.png", "exploded.png", "preview.html",
+                "invention-sheet.html", "hero.png", "exploded.png", "orthographic.svg", "preview.html",
                 "design.magtel.json", "stl/chassis.stl", "stl/axle.stl", "stl/wheel.stl", "START HERE.txt",
+                *(f"stl/{part}.stl" for part in body_ids),
             })
             self.assertIsNone(archive.testzip())
             sheet = archive.read("invention-sheet.html").decode()
@@ -79,11 +89,17 @@ class DreamWorkflowTests(unittest.TestCase):
             self.assertIn('<td>6</td>', sheet)
             self.assertIn("stl/wheel.stl", sheet)
             self.assertNotEqual(archive.read("hero.png"), archive.read("exploded.png"))
-            for part in ("chassis", "axle", "wheel"):
+            drawing = archive.read("orthographic.svg").decode()
+            self.assertIn("SIDE VIEW", drawing)
+            self.assertIn("TOP VIEW", drawing)
+            for part in ("chassis", "axle", "wheel", *body_ids):
                 stl = archive.read(f"stl/{part}.stl")
                 count, = struct.unpack_from("<I", stl, 80)
                 self.assertGreater(count, 0)
                 self.assertEqual(len(stl), 84 + 50 * count)
+                if part in body_ids:
+                    facets = struct.iter_unpack("<12fH", stl[84:])
+                    self.assertEqual(min(min(face[5], face[8], face[11]) for face in facets), 0)
             saved = Path(archive.extract("design.magtel.json", folder))
             self.assertEqual(load_design(saved).design, variant)
             preview = Path(folder) / "share.html"
@@ -101,6 +117,13 @@ class DreamWorkflowTests(unittest.TestCase):
         status, _, converted = self.request("/api/import", {"design": original})
         self.assertEqual(status, 200)
         self.assertEqual(len(converted["parts"]), 7)
+        self.assertEqual(converted["design"]["body_style"], "plain")
+        legacy_dream = {key: val for key, val in converted["design"].items()
+                        if key not in ("body_style", "body_colors")}
+        legacy_dream["version"] = 1
+        status, _, imported = self.request("/api/import", {"design": legacy_dream})
+        self.assertEqual(status, 200)
+        self.assertEqual(imported["parts"], converted["parts"])
         self.assertEqual(converted["design"]["wheelbase"], original["assembly"]["wheelbase"])
 
     def test_loopback_boundary_and_malformed_input(self):

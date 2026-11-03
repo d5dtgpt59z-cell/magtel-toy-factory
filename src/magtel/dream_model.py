@@ -3,21 +3,37 @@
 import math
 import re
 from dataclasses import dataclass
+from functools import cached_property
 
 from .assembly import CarSpec, _bored_chassis_section, _on_axle
+from .dream_body import BODY_PROFILES, BodyPart, body_parts
+from .dream_carrier import shape_carrier
 from .language import _dimension as _parse_measure
 from .language import _measurement
 from .mesh import Triangle, _CIRCLE_SEGMENTS, _quad
 from .model import DesignError, ToySpec, _dimension, mm
 
 FORMAT = "magtel-dream"
-VERSION = 1
+VERSION = 2
 
 _FIELDS = (
     "length", "width", "height", "wheel_diameter", "wheel_thickness",
     "wheel_bore", "axle_diameter", "axle_length", "wheelbase", "wheel_gap", "axle_clearance",
 )
 _PARTS = ("chassis", "axle", "wheel")
+_BODY_ROLES = ("shell", "accent", "equipment")
+_RECIPE_BODIES = {"Lunar Rover": "lunar", "Pocket Racer": "racer",
+                  "Rescue Truck": "truck", "Workshop Buggy": "racer"}
+_VARIANT_BODIES = {"ribbed": "truck", "beveled": "racer", "balloon": "truck",
+                   "crowned": "lunar", "stepped": "racer"}
+_BODY_COLORS = {
+    "plain": ("#e5eae7", "#28394a", "#db8f26"),
+    "lunar": ("#eef1db", "#24405a", "#ffa032"),
+    "racer": ("#fbf2da", "#1d2f44", "#e8a33d"),
+    "truck": ("#ffd792", "#253647", "#6b7885"),
+}
+_MIN_BODY_LENGTH, _MIN_BODY_WIDTH = 35, 12
+_UNDERCARRIAGE = "#394254"
 _PROFILES = {
     "ribbed": ("Off-Road", "#a5b453", "#333a32"),
     "beveled": ("Racing", "#f24853", "#303b55"),
@@ -58,7 +74,7 @@ _WHEEL_COUNT = re.compile(
 _VEHICLE = re.compile(r"\b(?:car|rover|buggy|truck|vehicle|racer|kart)\b")
 _CONCEPT_ONLY = {
     "powered motion": r"\b(?:battery|electric|motor(?:ized|ised)?|remote[ -]control)\b",
-    "flight": r"\b(?:fl(?:y|ies|ying)|wings?|rockets?|jet engines?)\b",
+    "flight": r"\b(?:fl(?:y|ies|ying)|rockets?|jet engines?)\b",
     "lighting": r"\b(?:leds?|lights?|lighting)\b",
     "movable accessories": r"\b(?:arms?|claws?|cranes?|suspension|steering)\b",
     "obstacle climbing": r"\bclimb(?:s|ing)?\b",
@@ -154,13 +170,19 @@ def invent(prompt: str) -> dict:
         dimensions["height"] = min(height, max(8, dimensions["wheel_diameter"] - 2))
     if "length" in explicit:
         notes.append("The requested length sizes the chassis. The full toy may extend beyond it at the wheels.")
+    style = _RECIPE_BODIES[concept]
+    if dimensions["length"] < _MIN_BODY_LENGTH or dimensions["width"] < _MIN_BODY_WIDTH:
+        style = "plain"
+        notes.append("This chassis is too small for the body modules. The bare chassis is used.")
     design = {
         "format": FORMAT, "version": VERSION, "units": "mm", "name": concept,
         "prompt": prompt, "concept": concept, "notes": [*notes, *_FEASIBILITY],
         "axle_count": axles, **dimensions, "wheel_bore": 6.2,
         "axle_diameter": 5.8, "axle_length": dimensions["width"] + 2 * (dimensions["wheel_thickness"] + 3),
         "wheel_gap": 1.2, "axle_clearance": 0.4, "wheel_profile": profile,
-        "colors": {"chassis": color, "axle": "#c8d0dc", "wheel": tires},
+        "colors": {"chassis": color if style == "plain" else _UNDERCARRIAGE, "axle": "#c8d0dc", "wheel": tires},
+        "body_style": style,
+        "body_colors": _body_palette(style, color),
     }
     return build(design).design
 
@@ -169,14 +191,15 @@ def build(design: object) -> "DreamSpec":
     """Validate a browser design or a saved Dream JSON object before meshing."""
     if not isinstance(design, dict) or design.get("format") != FORMAT:
         raise DesignError("Open a MAGTEL Dream design.")
-    if type(design.get("version")) is not int or design["version"] != VERSION or design.get("units") != "mm":
-        raise DesignError("Use MAGTEL Dream version 1 in millimeters.")
+    version = design.get("version")
+    if type(version) is not int or version not in (1, VERSION) or design.get("units") != "mm":
+        raise DesignError("Use MAGTEL Dream version 1 or 2 in millimeters.")
     if design.keys() - {
         "format", "version", "units", "name", "prompt", "concept", "notes", "axle_count",
-        *_FIELDS, "wheel_profile", "colors", "variant",
+        *_FIELDS, "wheel_profile", "colors", "variant", "body_style", "body_colors",
     }:
         raise DesignError("This Dream design contains unknown parameters.")
-    data = dict(design)
+    data = {**design, "version": VERSION}
     data["name"] = _text(design.get("name"), "the toy name", 80)
     data["prompt"] = _text(design.get("prompt"), "the toy idea", 360)
     data["concept"] = _text(design.get("concept"), "the concept label", 80)
@@ -197,8 +220,20 @@ def build(design: object) -> "DreamSpec":
     ):
         raise DesignError("Use a six-digit hex color for each part family.")
     data["colors"] = {key: color.lower() for key, color in colors.items()}
+    style = design.get("body_style", "plain")
+    if not isinstance(style, str) or style not in BODY_PROFILES:
+        raise DesignError("Choose a supported body style.")
+    body_colors = design.get("body_colors", _body_palette(style))
+    if not isinstance(body_colors, dict) or body_colors.keys() != set(_BODY_ROLES) or not all(
+        isinstance(color, str) and re.fullmatch(r"#[\da-fA-F]{6}", color, re.ASCII) for color in body_colors.values()
+    ):
+        raise DesignError("Use a six-digit hex color for each body material.")
+    data["body_style"] = style
+    data["body_colors"] = {key: color.lower() for key, color in body_colors.items()}
     for key in _FIELDS:
         data[key] = _dimension(design.get(key), key.replace("_", " ").capitalize())
+    if style != "plain" and (data["length"] < _MIN_BODY_LENGTH or data["width"] < _MIN_BODY_WIDTH):
+        raise DesignError("Body modules need a chassis at least 35 mm long and 12 mm wide. Select Bare Chassis to go smaller.")
     car = CarSpec(
         name=data["name"],
         chassis=ToySpec("block", "Chassis", width=data["length"], depth=data["width"], height=data["height"]),
@@ -229,16 +264,31 @@ def from_car(car: CarSpec) -> dict:
     }).design
 
 
+def _body_palette(style: str, shell: str | None = None) -> dict[str, str]:
+    colors = dict(zip(_BODY_ROLES, _BODY_COLORS[style]))
+    if shell is not None:
+        colors["shell"] = shell
+    return colors
+
+
 def variants(design: object) -> list[dict]:
-    """Offer five wheel profiles and colorways within the same mounting envelope."""
+    """Offer interchangeable wheels and styled bodies on the same rolling chassis."""
     current = build(design).design
-    return [
-        {
+    styled = current["body_style"] != "plain"
+    alternatives = []
+    for profile, (name, body_color, wheel_color) in _PROFILES.items():
+        style = _VARIANT_BODIES[profile] if styled else "plain"
+        alternatives.append({
             **current, "notes": list(current["notes"]), "variant": name, "wheel_profile": profile,
-            "colors": {**current["colors"], "chassis": body_color, "wheel": wheel_color},
-        }
-        for profile, (name, body_color, wheel_color) in _PROFILES.items()
-    ]
+            "colors": {**current["colors"], "chassis": _UNDERCARRIAGE if styled else body_color, "wheel": wheel_color},
+            "body_style": style,
+            "body_colors": _body_palette(style, body_color),
+        })
+    return alternatives
+
+
+def _extents(faces: list[Triangle]) -> tuple[tuple[float, float], ...]:
+    return tuple((min(axis), max(axis)) for axis in zip(*(point for face in faces for point in face)))
 
 
 @dataclass(frozen=True)
@@ -252,7 +302,25 @@ class DreamSpec:
     def name(self) -> str:
         return self.design["name"]
 
+    @cached_property
+    def body_modules(self) -> dict[str, BodyPart]:
+        d = self.design
+        top = (d["wheel_diameter"] + d["height"]) / 2
+        return {part.id: part for part in body_parts(d["body_style"], d["length"], d["width"], top)}
+
+    def body_dimensions(self, part_id: str) -> dict[str, float]:
+        return {axis: high - low for axis, (low, high) in
+                zip(("length", "width", "height"), _extents(self.body_modules[part_id].faces))}
+
     def part_meshes(self) -> dict[str, list[Triangle]]:
+        parts = self._rolling_meshes()
+        for key, module in self.body_modules.items():
+            (left, right), (front, back), (base, _) = _extents(module.faces)
+            cx, cy = (left + right) / 2, (front + back) / 2
+            parts[key] = [tuple((x - cx, y - cy, z - base) for x, y, z in face) for face in module.faces]
+        return parts
+
+    def _rolling_meshes(self) -> dict[str, list[Triangle]]:
         parts = self._car.part_meshes()
         d = self.design
         if d["axle_count"] == 3:
@@ -260,6 +328,10 @@ class DreamSpec:
                 d["length"], d["width"], d["height"], d["wheelbase"],
                 (d["axle_diameter"] + d["axle_clearance"]) / 2,
             )
+        parts["chassis"] = shape_carrier(
+            parts["chassis"], d["body_style"], d["length"], d["height"], d["wheelbase"],
+            d["axle_diameter"] + d["axle_clearance"],
+        )
         if d["wheel_profile"] != "straight":
             parts["wheel"] = _profiled_wheel(
                 d["wheel_diameter"], d["wheel_thickness"], d["wheel_bore"], d["wheel_profile"],
@@ -268,7 +340,7 @@ class DreamSpec:
 
     def components(self) -> dict[str, list[Triangle]]:
         d = self.design
-        parts = self.part_meshes()
+        parts = self._rolling_meshes()
         radius = d["wheel_diameter"] / 2
         base = radius - d["height"] / 2
         placed = {
@@ -282,13 +354,16 @@ class DreamSpec:
             placed[f"{end}-axle"] = _on_axle(parts["axle"], x, -d["axle_length"] / 2, radius)
             placed[f"{end}-left-wheel"] = _on_axle(parts["wheel"], x, inside, radius)
             placed[f"{end}-right-wheel"] = _on_axle(parts["wheel"], x, -inside - d["wheel_thickness"], radius)
+        placed.update((key, module.faces) for key, module in self.body_modules.items())
         return placed
 
     def dimensions(self) -> dict:
         d = self.design
+        top = max((z for module in self.body_modules.values()
+                   for face in module.faces for _, _, z in face), default=0)
         return {
             "length": max(d["length"], d["wheelbase"] + d["wheel_diameter"]),
-            "width": d["axle_length"], "height": d["wheel_diameter"],
+            "width": d["axle_length"], "height": max(d["wheel_diameter"], top),
         }
 
     def fit(self) -> dict:
@@ -309,10 +384,16 @@ class DreamSpec:
             ("wheel", 2 * d["axle_count"], f'Ø{mm(d["wheel_diameter"])} × {mm(d["wheel_thickness"])} mm'
                                          f' · Ø{mm(d["wheel_bore"])} mm bore'),
         )
-        return [
-            {"part": part, "quantity": quantity, "dimensions": dimensions, "material": "User-selected"}
+        bom = [
+            {"part": part, "name": part.title(), "color": d["colors"][part],
+             "quantity": quantity, "dimensions": dimensions, "material": "User-selected"}
             for part, quantity, dimensions in rows
         ]
+        for key, module in self.body_modules.items():
+            size = " × ".join(mm(value) for value in self.body_dimensions(key).values())
+            bom.append({"part": key, "name": module.name, "color": d["body_colors"][module.role],
+                        "quantity": 1, "dimensions": f"{size} mm", "material": "User-selected"})
+        return bom
 
     def describe(self) -> str:
         d = self.design
@@ -350,7 +431,7 @@ def _three_bore_chassis(length: float, width: float, height: float, wheelbase: f
 
 
 def _profiled_wheel(diameter: float, thickness: float, bore: float, profile: str) -> list[Triangle]:
-    """Revolve a shoulder profile while preserving the through bore and mounting span."""
+    """Mold recessed spokes between full-depth hub lands and the outer shoulders."""
     profiles = {
         "beveled": ((0, 1), (0.22, 0), (0.78, 0), (1, 1)),
         "crowned": ((0, 1), (0.14, 0.46), (0.30, 0.13), (0.5, 0),
@@ -376,12 +457,31 @@ def _profiled_wheel(diameter: float, thickness: float, bore: float, profile: str
     ]
     bore_base = [(x * bore / 2, y * bore / 2, 0) for x, y in directions]
     bore_top = [(x, y, thickness) for x, y, _ in bore_base]
+    # Both faces get the same relief so the wheel can mount either way.
+    # The lands at the bore and the shoulders retain the full nominal span.
+    shoulder = radius - relief * profiles[profile][0][1]
+    web = shoulder - bore / 2
+    depth = min(thickness * 0.26, web * 0.29)
+    spokes = {"beveled": 6, "crowned": 6, "ribbed": 8, "balloon": 4, "stepped": 8}[profile]
+    pockets = [
+        depth * max(0, min(1, (0.86 - math.cos(spokes * i * math.tau / _CIRCLE_SEGMENTS)) / 0.66))
+        for i in range(_CIRCLE_SEGMENTS)
+    ]
+    face_rings = [
+        [(x * (bore / 2 + web * fraction), y * (bore / 2 + web * fraction), pocket if recessed else 0)
+         for (x, y), pocket in zip(directions, pockets)]
+        for fraction, recessed in ((0.21, False), (0.34, True), (0.73, True), (0.86, False))
+    ]
+    cap_base = [bore_base, *face_rings, rings[0]]
+    cap_top = [bore_top, *([(x, y, thickness - z) for x, y, z in ring] for ring in face_rings), rings[-1]]
     faces = []
     for i in range(_CIRCLE_SEGMENTS):
         j = (i + 1) % _CIRCLE_SEGMENTS
         for lower, upper in zip(rings, rings[1:]):
             _quad(faces, lower[i], lower[j], upper[j], upper[i])
         _quad(faces, bore_base[j], bore_base[i], bore_top[i], bore_top[j])
-        _quad(faces, rings[0][j], rings[0][i], bore_base[i], bore_base[j])
-        _quad(faces, rings[-1][i], rings[-1][j], bore_top[j], bore_top[i])
+        for inner, outer in zip(cap_base, cap_base[1:]):
+            _quad(faces, inner[i], inner[j], outer[j], outer[i])
+        for inner, outer in zip(cap_top, cap_top[1:]):
+            _quad(faces, inner[i], outer[i], outer[j], inner[j])
     return faces

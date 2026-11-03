@@ -9,12 +9,13 @@
   const inertiaRatio = 0.14; // Lumped wheel inertia as a fraction of m*r².
   const limitations = "Estimate only. One-dimensional rigid rolling with approximate grip, mass distribution and barrier bounce. No steering, suspension, deformation or material validation.";
 
-  function create(design, scenario) {
+  function create(design, scenario, overallHeight = design.wheel_diameter) {
     if (!["floor", "ramp", "barrier"].includes(scenario)) {
       throw new RangeError("Choose a floor, ramp or barrier track.");
     }
     const {length, width, height, wheelbase, wheel_diameter: diameter, axle_count: axles} = design;
     const radius = diameter / 2;
+    const centerHeight = radius + height / 8 + Math.max(0, overallHeight - diameter) * 0.3;
     const size = Math.max(length, wheelbase + diameter);
     const halfTrack = width / 2 + design.wheel_gap + design.wheel_thickness / 2;
     const slope = scenario === "floor" ? 0 : 0.22;
@@ -60,8 +61,8 @@
 
     const sample = () => {
       const {pitch, z, middleLift} = pose(x);
-      // Nominal symmetric mass. Check gravity's line of action against outer axles.
-      const supportMargin = wheelbase / 2 - Math.abs(Math.tan(pitch)) * (radius + height / 8);
+      // Estimate a centered mass with a height allowance for the upper body.
+      const supportMargin = wheelbase / 2 - Math.abs(Math.tan(pitch)) * centerHeight;
       const stability = supportMargin <= 0 ? "Tip risk"
         : middleLift > diameter * 0.015 ? "Center axle rocking"
           : supportMargin < wheelbase * 0.12 ? "Narrow support" : "Within support";

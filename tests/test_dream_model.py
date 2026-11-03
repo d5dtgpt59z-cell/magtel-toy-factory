@@ -31,7 +31,7 @@ class DreamModelTests(unittest.TestCase):
         self.assertEqual(rover["concept"], "Lunar Rover")
         self.assertEqual(rover["axle_count"], 3)
         self.assertEqual(rover["wheel_diameter"], 38)
-        self.assertEqual(rover["colors"]["chassis"], "#b7ef58")
+        self.assertEqual(rover["body_colors"]["shell"], "#b7ef58")
         self.assertEqual(invent("Pink pocket-sized race car")["concept"], "Pocket Racer")
         self.assertEqual(invent("Orange rescue truck with wide wheels")["concept"], "Rescue Truck")
 
@@ -66,13 +66,14 @@ class DreamModelTests(unittest.TestCase):
                 self.assertAlmostEqual(math.hypot(x - center, z - d["height"] / 2), radius)
 
         placed = spec.components()
-        self.assertEqual(len(placed), 10)
+        self.assertEqual(len(set(placed) - spec.body_modules.keys()), 10)
+        self.assertTrue(spec.body_modules)
         for location, x in (("front", 45), ("middle", 0), ("rear", -45)):
             for side in ("left", "right"):
                 horizontal, _, vertical = bounds(placed[f"{location}-{side}-wheel"])
                 self.assertAlmostEqual(sum(horizontal) / 2, x)
                 self.assertAlmostEqual(vertical[0], 0)
-        self.assertEqual([row["quantity"] for row in spec.bom()], [1, 3, 6])
+        self.assertEqual([row["quantity"] for row in spec.bom()[:3]], [1, 3, 6])
 
     def test_variants_preserve_mates_and_change_closed_wheel_geometry(self):
         source = invent("Six-wheeled moon rover")
@@ -87,11 +88,18 @@ class DreamModelTests(unittest.TestCase):
             with self.subTest(variant=alternative["variant"]):
                 spec = build(alternative)
                 parts = spec.part_meshes()
-                for kind in ("chassis", "axle"):
-                    self.assertEqual(original_parts[kind], parts[kind])
-                self.assertEqual(spec.dimensions(), original.dimensions())
+                self.assertEqual(original_parts["axle"], parts["axle"])
+                if alternative["body_style"] == source["body_style"]:
+                    self.assertEqual(original_parts["chassis"], parts["chassis"])
+                else:
+                    self.assertNotEqual(original_parts["chassis"], parts["chassis"])
+                    self.assert_closed_stl(parts["chassis"], euler=-4)
+                for axis in ("length", "width"):
+                    self.assertEqual(spec.dimensions()[axis], original.dimensions()[axis])
+                self.assertIn(spec.design["body_style"], ("lunar", "racer", "truck"))
                 self.assertEqual(spec.fit(), original.fit())
-                self.assertEqual(spec.bom(), original.bom())
+                for kind, row in enumerate(spec.bom()[:3]):
+                    self.assertEqual(row["dimensions"], original.bom()[kind]["dimensions"])
                 wheel_meshes.add(stl_bytes(parts["wheel"]))
                 self.assertNotEqual(source["colors"], alternative["colors"])
                 self.assertEqual(bounds(original_parts["wheel"]), bounds(parts["wheel"]))

@@ -21,7 +21,6 @@ LIMITS = (
     "on physical prototypes. The slip-fit wheels need "
     "a separate retention method. This sheet does not establish product or child safety."
 )
-_PART_NAMES = {"chassis": "Chassis", "axle": "Axle", "wheel": "Wheel"}
 _RIGHT = (0.64, 0.7684, 0.0)
 _UP = (-0.3611, 0.3008, 0.8827)
 _VIEW = (0.6783, -0.5649, 0.4695)
@@ -38,19 +37,32 @@ def studio_data(spec: DreamSpec) -> dict[str, object]:
     parts = []
     for key, triangles in spec.components().items():
         kind = key.split("-")[-1]
-        if kind == "wheel":
-            offset = (0, wheel_travel if "-left-" in key else -wheel_travel, 0)
-        elif kind == "chassis":
-            offset = (0, 0, chassis_lift)
+        part = {"id": key}
+        if module := spec.body_modules.get(key):
+            part.update({
+                "name": module.name,
+                "kind": "body",
+                "role": module.role,
+                "dimensions": spec.body_dimensions(key),
+                "color": design["body_colors"][module.role],
+            })
+            top = (diameter + design["height"]) / 2
+            bottom = min(point[2] for face in triangles for point in face)
+            stacked = bottom > top + 1e-6
+            offset = (0, 0, chassis_lift + diameter * (1.1 if stacked else 0.5))
         else:
-            offset = (0, 0, 0)
-        parts.append({
-            "id": key,
-            "name": key.replace("-", " ").title(),
-            "color": design["colors"][kind],
+            part.update({"name": key.replace("-", " ").title(), "color": design["colors"][kind]})
+            if kind == "wheel":
+                offset = (0, wheel_travel if "-left-" in key else -wheel_travel, 0)
+            elif kind == "chassis":
+                offset = (0, 0, chassis_lift)
+            else:
+                offset = (0, 0, 0)
+        part.update({
             "vertices": [round(coord, 6) for face in triangles for point in face for coord in point],
             "explode": offset,
         })
+        parts.append(part)
 
     return {
         "design": design,
@@ -124,8 +136,10 @@ def _png(pixels, width, height):
             + chunk(b"IEND", b""))
 
 
-def _render(parts: list[dict], *, exploded: bool) -> bytes:
+def _render(parts: list[dict], *, exploded: bool, axes=(_RIGHT, _UP, _VIEW),
+            drawing_scale: float | None = None) -> bytes:
     """Shade the actual mesh with orthographic projection and per-pixel depth."""
+    right, up, view = axes
     projected = []
     guide_lines = []
     for part in parts:
@@ -138,21 +152,21 @@ def _render(parts: list[dict], *, exploded: bool) -> bytes:
             ab = tuple(y - x for x, y in zip(a, b))
             ac = tuple(y - x for x, y in zip(a, c))
             normal = _cross(ab, ac)
-            if _dot(normal, _VIEW) <= 1e-12:
+            if _dot(normal, view) <= 1e-12:
                 continue
             light = 0.61 + 0.39 * max(0, _dot(normal, _LIGHT) / math.hypot(*normal))
             fill = bytes(round(channel * light) for channel in color)
-            points = [(_dot(p, _RIGHT), -_dot(p, _UP), _dot(p, _VIEW)) for p in (a, b, c)]
+            points = [(_dot(p, right), -_dot(p, up), _dot(p, view)) for p in (a, b, c)]
             projected.append((points, fill))
         if exploded and any(offset):
             center = tuple((min(vertices[axis::3]) + max(vertices[axis::3])) / 2 for axis in range(3))
             end = tuple(x + dx for x, dx in zip(center, offset))
-            guide_lines.append([(_dot(p, _RIGHT), -_dot(p, _UP), 0) for p in (center, end)])
+            guide_lines.append([(_dot(p, right), -_dot(p, up), 0) for p in (center, end)])
 
     xs, ys, _ = zip(*(point for points, _ in projected for point in points))
     xmid, ymid = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
     width, height = 900, 500
-    scale = min((width - 110) / (max(xs) - min(xs)), (height - 82) / (max(ys) - min(ys)))
+    scale = drawing_scale or min((width - 110) / (max(xs) - min(xs)), (height - 82) / (max(ys) - min(ys)))
 
     def position(point):
         x, y, z = point
@@ -175,6 +189,56 @@ def _render(parts: list[dict], *, exploded: bool) -> bytes:
     return _png(pixels, width, height)
 
 
+def _orthographic_drawing(data: dict) -> str:
+    """Project the assembled mesh at one common scale and dimension its envelope."""
+    length, width, height = (data["dimensions"][axis] for axis in ("length", "width", "height"))
+    scale = min(790 / length, 418 / max(width, height))
+    ratio = 0.52
+    views = (
+        ("SIDE VIEW", height, ((1, 0, 0), (0, 0, 1), (0, -1, 0))),
+        ("TOP VIEW", width, ((1, 0, 0), (0, 1, 0), (0, 0, 1))),
+    )
+    title = escape(data["design"]["name"])
+    panels = []
+    for index, (label, cross, axes) in enumerate(views):
+        left = 28 + index * 528
+        cx, cy = left + 450 * ratio, 211
+        half_length, half_cross = length * scale * ratio / 2, cross * scale * ratio / 2
+        x1, x2, y1, y2 = cx - half_length, cx + half_length, cy - half_cross, cy + half_cross
+        h, v = 360, left + 485
+        render = _render(data["parts"], exploded=False, axes=axes, drawing_scale=scale)
+        src = b64encode(render).decode("ascii")
+        panels.append(f"""
+  <g>
+    <text class="label" x="{left}" y="67">{label}</text>
+    <image x="{left}" y="{cy - 250 * ratio}" width="{900 * ratio}" height="{500 * ratio}"
+           href="data:image/png;base64,{src}"/>
+    <path class="extension" d="M{x1} {y2}V{h + 7} M{x2} {y2}V{h + 7} M{x2} {y1}H{v + 7} M{x2} {y2}H{v + 7}"/>
+    <path class="dim" d="M{x1} {h}H{x2}"/>
+    <path class="dim" d="M{v} {y1}V{y2}"/>
+    <text class="number" x="{cx}" y="{h + 20}">{mm(length)} mm</text>
+    <text class="number" x="{v + 16}" y="{cy}" transform="rotate(-90 {v + 16} {cy})">{mm(cross)} mm</text>
+  </g>""")
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 440" role="img" aria-labelledby="title">
+  <title id="title">{title} orthographic envelope drawing</title>
+  <style>
+    text{{fill:#22352b;font-family:system-ui,sans-serif}} .label{{font-size:12px;font-weight:bold;letter-spacing:1px}}
+    .number{{font-size:12px;font-weight:bold;text-anchor:middle}}
+    .extension,.dim{{fill:none;stroke:#62766a;stroke-width:1}}
+    .dim{{marker-start:url(#arrow);marker-end:url(#arrow)}}
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0 0L8 4L0 8Z" fill="#62766a"/>
+  </marker></defs>
+  <rect x="1" y="1" width="1078" height="438" fill="#fffdf8" stroke="#aab6ac"/>
+  <text x="28" y="31" font-size="22" font-weight="bold">{title}</text>
+  {"".join(panels)}
+  <path d="M28 401H1052" stroke="#aab6ac"/>
+  <text class="label" x="28" y="423">MAGTEL / ORTHOGRAPHIC ENVELOPE</text>
+  <text x="1052" y="423" text-anchor="end" font-size="12">Matched view scale · nominal dimensions · use labeled values</text>
+</svg>"""
+
+
 def _sheet_html(data: dict, hero: bytes, exploded: bytes) -> str:
     design = data["design"]
     name = escape(design["name"])
@@ -183,11 +247,12 @@ def _sheet_html(data: dict, hero: bytes, exploded: bytes) -> str:
     dims = " × ".join(mm(data["dimensions"][axis]) for axis in ("length", "width", "height"))
     notes = "".join(f"<li>{escape(note)}</li>" for note in design["notes"])
     variant = escape(design.get("variant") or "Original build")
+    mount = _mount_note(data["design"])
     rows = []
     for entry in data["bom"]:
         part = entry["part"]
-        rows.append(f'<tr><th scope="row"><span style="background:{design["colors"][part]}"></span>'
-                    f'{_PART_NAMES[part]}</th><td>{entry["quantity"]}</td>'
+        rows.append(f'<tr><th scope="row"><span style="background:{entry["color"]}"></span>'
+                    f'{escape(entry["name"])}</th><td>{entry["quantity"]}</td>'
                     f'<td>{escape(entry["dimensions"])}</td><td>{escape(entry["material"])}</td>'
                     f'<td><a href="stl/{part}.stl">{part}.stl</a></td></tr>')
     fit_labels = {
@@ -244,13 +309,20 @@ button{{font:inherit;color:#fff;background:#23352b;padding:8px 12px;border:0;cur
 <tbody>{"".join(rows)}</tbody></table></div>
 <div class="info">
 <section><h2>Nominal fit</h2><ul>{fits}</ul></section>
-<section><h2>Prototype notes</h2><p>Slide each axle through a chassis bore, then fit a wheel on each end.</p><ul>{notes}</ul></section>
+<section><h2>Prototype notes</h2><p>Slide each axle through a chassis bore, then fit a wheel on each end. {mount}</p><ul>{notes}</ul></section>
 </div>
 <footer><p>{LIMITS}</p><a href="preview.html">Interactive offline 3D preview</a> ·
-<a href="design.magtel.json">Editable design</a> · Use millimeters in your slicer.</footer>
+<a href="design.magtel.json">Editable design</a> · <a href="orthographic.svg">Orthographic drawing</a> · Use millimeters in your slicer.</footer>
 </main>
 </html>
 """
+
+
+def _mount_note(design: dict) -> str:
+    if design["body_style"] == "plain":
+        return ""
+    return ("Body pieces are separate prints with flat contact faces. Use the exploded view for placement "
+            "and secure them with a suitable adhesive or retainer before handling.")
 
 
 def invention_bundle(spec: DreamSpec) -> bytes:
@@ -263,6 +335,7 @@ def invention_bundle(spec: DreamSpec) -> bytes:
         archive.writestr("invention-sheet.html", _sheet_html(data, hero, exploded))
         archive.writestr("hero.png", hero)
         archive.writestr("exploded.png", exploded)
+        archive.writestr("orthographic.svg", _orthographic_drawing(data))
         archive.writestr("preview.html", dream_preview_html(spec, data))
         archive.writestr("design.magtel.json", json.dumps(spec.design, ensure_ascii=False, indent=2) + "\n")
         for part, faces in spec.part_meshes().items():
@@ -273,6 +346,7 @@ def invention_bundle(spec: DreamSpec) -> bytes:
 STL coordinates are in millimeters. Print these quantities for one prototype:
 {instructions}
 
+{_mount_note(spec.design)}
 {LIMITS}
 """)
     return output.getvalue()
