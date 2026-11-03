@@ -94,15 +94,15 @@
             <div class="inspector-body">
               <label class="sr-only" for="part-select">Select a part</label>
               <select id="part-select" disabled><option>Loading assembly…</option></select>
-              <label class="body-style" for="body-style">
-                <span>Body style</span>
+              <div class="body-style">
+                <label for="body-style">Body style</label>
                 <select id="body-style" disabled>
                   <option value="plain">Bare chassis</option>
                   <option value="lunar">Lunar rover</option>
                   <option value="racer">Pocket racer</option>
                   <option value="truck">Rescue truck</option>
                 </select>
-              </label>
+              </div>
               <form id="part-form">
                 <div id="part-fields" class="part-fields"></div>
                 <dl id="part-dimensions" class="part-dimensions" aria-label="Body part dimensions" hidden></dl>
