@@ -6,7 +6,6 @@
   --white: #fffefa;
   --line: #c9cec4;
   --accent: #ff784c;
-  --mint: #e3eee8;
   --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
   --sans: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
 }
@@ -138,6 +137,8 @@ h1 span { color: #c54522; }
   font-weight: 700;
 }
 .chip:hover:not(:disabled), .small-button:hover:not(:disabled) { background-color: #e8eee6; }
+.chip-featured { color: #f8faf9; background: #22354a; border-color: #22354a; }
+.chip-featured:hover:not(:disabled) { background-color: #324d6a; }
 .interpretation { margin-top: 16px; padding: 11px 12px; border-left: 3px solid #759c86; background: #eef3eb; }
 #concept { margin: 5px 0 7px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 details { font-size: 12px; line-height: 1.45; }
@@ -165,25 +166,23 @@ h2 { margin-top: 5px; font-size: clamp(21px, 2.6vw, 36px); line-height: 1.06; fo
   position: relative;
   isolation: isolate;
   min-height: 0;
-  background-color: var(--mint);
-  background-image: radial-gradient(#a6bcb1 1px, transparent 1px), radial-gradient(ellipse at center, #f4fbf4, #dcebe4);
-  background-size: 17px 17px, 100% 100%;
+  background-color: #e9edf1;
+  background-image: radial-gradient(ellipse at 43% 27%, #fff 0%, #f7f8fa 43%, #e2e7ed 100%);
 }
 #workbench-canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 #workbench-canvas:focus-visible { outline-offset: -5px; }
-.view-heading, .view-corner, .view-hint { position: absolute; color: #2e493c; pointer-events: none; }
-.view-heading, .view-corner {
+.view-heading, .view-hint { position: absolute; color: #3d4d5b; pointer-events: none; }
+.view-heading {
   top: 12px;
   padding: 6px 7px;
-  background: #f7faf2e8;
-  border: 1px solid #a0b8aa;
-  border-radius: 3px;
+  background: #ffffffa8;
+  border: 1px solid #c9d2d9;
+  border-radius: 4px;
   font: 800 9px/1 var(--mono);
   letter-spacing: .07em;
 }
 .view-heading { left: 12px; display: inline-flex; align-items: center; gap: 6px; }
-.view-corner { right: 12px; }
-.view-dot { width: 6px; height: 6px; background: #327856; border-radius: 50%; }
+.view-dot { width: 6px; height: 6px; background: #49657e; border-radius: 50%; }
 .view-hint { left: 12px; bottom: 15px; max-width: calc(100% - 205px); font-size: 11px; font-weight: 700; }
 .camera-controls { position: absolute; right: 11px; bottom: 11px; display: flex; gap: 3px; }
 .camera-controls button {
@@ -191,10 +190,10 @@ h2 { margin-top: 5px; font-size: clamp(21px, 2.6vw, 36px); line-height: 1.06; fo
   height: 32px;
   padding: 0;
   font: 800 15px/1 var(--mono);
-  border-color: #a0b8aa;
-  background: #f7faf2;
+  border-color: #bdc9d2;
+  background: #f9fafb;
 }
-.camera-controls button:hover { background: #d1e3d6; }
+.camera-controls button:hover { background: #e5ecf2; }
 .view-bar {
   display: flex;
   align-items: center;

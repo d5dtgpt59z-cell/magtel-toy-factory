@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
-const starter = "A futuristic six-wheeled moon rover in lime green";
+const starter = $(".chip-featured").dataset.prompt;
 const current = {
   model: null,
   part: null,
@@ -46,8 +46,9 @@ const profileLabels = {
   ribbed: "Ribbed tread",
   balloon: "Balloon tread",
   stepped: "Stepped tread",
+  stream: "Turbine rim",
 };
-const bodyLabels = {lunar: "Lunar body", racer: "Racer body", truck: "Truck body"};
+const bodyLabels = {stream: "Slipstream body", lunar: "Lunar body", racer: "Racer body", truck: "Truck body"};
 const axleLengthLink = {width: 1, wheel_gap: 2, wheel_thickness: 2};
 const mm = (value) => `${Number(value.toFixed(2))} mm`;
 const message = (content, error = false, target = "#workbench-message") => {
@@ -72,9 +73,12 @@ async function request(endpoint, payload) {
 
 function updateControls() {
   const modelReady = Boolean(current.model);
-  for (const id of ["part-select", "body-style", "apply", "part-color", "variants-button", "export", "save", "test-mode"]) {
+  for (const id of ["part-select", "body-style", "variants-button", "export", "save", "test-mode"]) {
     $(`#${id}`).disabled = !modelReady || current.busy;
   }
+  const canEditPart = current.part && !current.busy;
+  $("#apply").disabled = !canEditPart;
+  $("#part-color").disabled = !canEditPart;
   for (const item of document.querySelectorAll(".part-fields input, .variant-card, .chip")) {
     item.disabled = current.busy;
   }
@@ -136,9 +140,16 @@ function partKind(part) {
 }
 
 function selectPart(id) {
-  current.part = id;
-  $("#part-select").value = id;
-  stage?.select(id);
+  current.part = id || null;
+  $("#part-select").value = id || "";
+  $("#part-form").hidden = !id;
+  $("#part-prompt").hidden = Boolean(id);
+  stage?.select(current.part);
+  if (!id) {
+    if (!stageWarning) $("#view-hint").textContent = "Drag to orbit · click a part to edit";
+    updateControls();
+    return;
+  }
   const design = current.model.design;
   const part = current.model.parts.find((item) => item.id === id);
   const kind = partKind(part);
@@ -214,7 +225,7 @@ function install(model, {fresh = false, variant = null} = {}) {
   if (fresh) $("#assumptions").open = design.notes.length > 2;
   $("#interpretation").hidden = false;
   $("#part-count").textContent = String(parts.length).padStart(2, "0");
-  $("#part-select").replaceChildren(...parts.map((part) => new Option(part.name, part.id)));
+  $("#part-select").replaceChildren(new Option("Choose a part…", ""), ...parts.map((part) => new Option(part.name, part.id)));
   $("#body-style").value = design.body_style ?? "plain";
   $("#fit-list").replaceChildren(...dimensionRows(fit, fitLabels));
   $("#fit-panel").hidden = false;
@@ -228,7 +239,7 @@ function install(model, {fresh = false, variant = null} = {}) {
     stage?.camera("reset");
     setMode("build");
   }
-  selectPart(parts.some((part) => part.id === current.part) && !fresh ? current.part : "chassis");
+  selectPart(parts.some((part) => part.id === current.part) && !fresh ? current.part : null);
   if (current.mode === "playtest") resetTest();
 }
 
@@ -284,7 +295,7 @@ function setMode(mode) {
   $("#test-panel").hidden = !testing;
   $("#edit-mode").setAttribute("aria-pressed", String(!testing));
   $("#test-mode").setAttribute("aria-pressed", String(testing));
-  $("#view-caption").textContent = testing ? "TRACK VIEW" : "ASSEMBLY VIEW";
+  $("#view-caption").textContent = testing ? "TRACK VIEW" : "STUDIO VIEW";
   $("#view-hint").textContent = stageWarning || (testing ? "Estimated motion · dimensions in mm" : "Drag to orbit · click a part to edit");
   if (testing) {
     resetTest();
@@ -379,6 +390,7 @@ $("#body-style").addEventListener("change", (event) => {
 });
 $("#part-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!current.part || current.busy) return;
   const design = {...current.model.design};
   for (const input of $("#part-fields").querySelectorAll("input")) design[input.name] = input.valueAsNumber;
   const part = current.model.parts.find((item) => item.id === current.part);

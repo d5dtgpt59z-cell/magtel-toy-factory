@@ -30,7 +30,7 @@
         <p class="intro">Imagine a toy vehicle. Give it wheels, a color, and a job to do.</p>
         <form id="idea-form">
           <label class="label" for="idea">YOUR IDEA</label>
-          <textarea id="idea" rows="3" minlength="3" maxlength="360" required placeholder="A futuristic six-wheeled moon rover in lime green"></textarea>
+          <textarea id="idea" rows="3" minlength="3" maxlength="360" required placeholder="A sleek low-slung midnight blue speedform"></textarea>
           <button class="primary invent" id="invent" type="submit">
             <span>Invent a Toy</span><span aria-hidden="true">↗</span>
           </button>
@@ -38,6 +38,7 @@
         <div class="idea-examples">
           <p class="label">TRY AN IDEA</p>
           <div class="chips">
+            <button class="chip chip-featured" type="button" data-prompt="A sleek low-slung midnight blue speedform">Slipstream</button>
             <button class="chip" type="button" data-prompt="A futuristic six-wheeled moon rover in lime green">Moon rover</button>
             <button class="chip" type="button" data-prompt="A pink pocket-sized race car with low-profile wheels">Pocket racer</button>
             <button class="chip" type="button" data-prompt="A chunky orange rescue truck with wide wheels">Rescue truck</button>
@@ -70,8 +71,7 @@
           <div class="viewport">
             <div class="canvas-wrap">
               <canvas id="workbench-canvas" tabindex="0" aria-label="Interactive 3D toy assembly. Use arrows to orbit, plus and minus to zoom, and Home to reset. Use the inspector to edit with the keyboard."></canvas>
-              <div class="view-heading" aria-hidden="true"><span class="view-dot"></span><span id="view-caption">ASSEMBLY VIEW</span></div>
-              <div class="view-corner" aria-hidden="true">FIG. 01</div>
+              <div class="view-heading" aria-hidden="true"><span class="view-dot"></span><span id="view-caption">STUDIO VIEW</span></div>
               <div class="view-hint" id="view-hint" aria-hidden="true">Drag to orbit · click a part to edit</div>
               <div class="camera-controls" role="group" aria-label="Camera controls">
                 <button type="button" data-camera="left" aria-label="Orbit left">←</button>
@@ -97,13 +97,15 @@
               <div class="body-style">
                 <label for="body-style">Body style</label>
                 <select id="body-style" disabled>
+                  <option value="stream">Slipstream</option>
                   <option value="plain">Bare chassis</option>
                   <option value="lunar">Lunar rover</option>
                   <option value="racer">Pocket racer</option>
                   <option value="truck">Rescue truck</option>
                 </select>
               </div>
-              <form id="part-form">
+              <p class="field-note" id="part-prompt">Choose a part in the model or from the list to see its dimensions and color.</p>
+              <form id="part-form" hidden>
                 <div id="part-fields" class="part-fields"></div>
                 <dl id="part-dimensions" class="part-dimensions" aria-label="Body part dimensions" hidden></dl>
                 <p class="field-note" id="part-note"></p>
