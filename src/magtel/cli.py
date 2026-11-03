@@ -269,6 +269,9 @@ def _parser() -> argparse.ArgumentParser:
     art_build.add_argument("file", metavar="PROJECT")
     art_build.add_argument("-o", "--output", required=True, metavar="FILE", help="write .step, .stl, or .html")
     art_build.add_argument("--force", action="store_true", help="replace an existing output file")
+    studio = commands.add_parser("studio", help="open the visual reference-art workspace in a browser")
+    studio.add_argument("--no-open", action="store_true", help="print the local workspace address without opening it")
+    studio.add_argument("--port", type=int, default=0, help="choose a local port (default: an available port)")
     edit = commands.add_parser("edit", help="describe changes to a saved design")
     edit.add_argument("file")
     edit.add_argument("request", nargs="+")
@@ -297,7 +300,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"make", "assemble", "art", "art-build", "edit", "show", "export", "preview", "fit",
+    commands = {"make", "assemble", "art", "art-build", "studio", "edit", "show", "export", "preview", "fit",
                 "workshop", "examples"}
     if argv and argv[0] not in commands and not argv[0].startswith("-"):
         argv.insert(0, "make")
@@ -312,6 +315,12 @@ def main(argv: list[str] | None = None) -> int:
             return _workshop(car=True)
         if args.command == "examples":
             _show_examples()
+        elif args.command == "studio":
+            from .workspace import run_workspace
+
+            if not 0 <= args.port <= 65535:
+                raise DesignError("Choose a port from 0 to 65535.")
+            return run_workspace(open_browser=not args.no_open, port=args.port)
         elif args.command == "art":
             from .art_geometry import build_art
             from .art_io import save_art

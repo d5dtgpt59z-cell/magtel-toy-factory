@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAGTEL Workspace</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%231e2b2d'/%3E%3Cpath fill='none' stroke='%23e9bb62' stroke-width='2.5' d='M8 22V10l8 7 8-7v12'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #efeee6;
+      --panel: #faf9f2;
+      --ink: #18292b;
+      --muted: #536062;
+      --line: #cfcdc0;
+      --gold: #efc26c;
+      --teal: #246e72;
+      --night: #101e24;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font: 15px/1.45 system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    button, select, textarea, input { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .47; cursor: default; }
+    :focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+    .mono { font-family: var(--mono); }
+    .masthead {
+      display: flex; align-items: center; justify-content: space-between; gap: .8rem 1rem;
+      color: #faf6e7; background: #1e2b2d; border-bottom: 3px solid var(--gold);
+      padding: .8rem clamp(1rem, 3vw, 2.5rem);
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
+    .brand-icon {
+      display: grid; place-items: center; width: 2.3rem; height: 2.3rem;
+      color: var(--gold); border: 1px solid #997c49; border-radius: .34rem;
+    }
+    .brand strong { display: block; font: 700 1rem/1.05 var(--mono); letter-spacing: .12em; }
+    .brand small { color: #c5d0c9; font: .61rem var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .masthead-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .button {
+      display: inline-flex; justify-content: center; align-items: center; gap: .45rem;
+      min-height: 2.45rem; padding: .42rem .72rem;
+      border: 1px solid #a8ada5; border-radius: .33rem; background: transparent; color: var(--ink);
+      font-size: .79rem; font-weight: 700; text-decoration: none; line-height: 1.15;
+    }
+    .button:hover:not(:disabled) { background: #e6e7dc; }
+    .button.light { border-color: #657470; color: #faf6e7; }
+    .button.light:hover:not(:disabled) { background: #344747; }
+    .button.light:focus-visible { outline-color: var(--gold); }
+    .button.primary { background: #eec474; border-color: #aa8445; color: #1e2b2d; }
+    .button.primary:hover:not(:disabled) { background: #f7d58b; }
+    .button.full { width: 100%; }
+    .button svg { flex: none; }
+    main { width: min(100%, 116rem); margin: auto; padding: 1.35rem clamp(.85rem, 2.8vw, 2.45rem) 1.5rem; }
+    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+    .overline { margin: 0 0 .3rem; color: var(--muted); font: 700 .68rem var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(1.9rem, 4vw, 3.05rem); font-weight: 740; letter-spacing: -.05em; line-height: 1; }
+    .intro p:last-child { margin: .48rem 0 0; color: var(--muted); font-size: .88rem; }
+    .workcell {
+      border: 1px solid #bfc1b5; color: #3d5050; border-radius: .3rem;
+      padding: .43rem .58rem; font: 700 .65rem var(--mono); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap;
+    }
+    .workcell::before, .state::before { content: ""; display: inline-block; width: .43rem; height: .43rem; margin-right: .36rem; border-radius: 50%; background: #407b67; vertical-align: .06em; }
+    .layout { display: grid; grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr) minmax(17rem, 20rem); gap: .75rem; align-items: start; }
+    .panel, .preview { min-width: 0; border: 1px solid var(--line); border-radius: .45rem; overflow: hidden; }
+    .panel { background: var(--panel); }
+    .panel-heading {
+      display: flex; align-items: center; justify-content: space-between; gap: .45rem;
+      border-bottom: 1px solid var(--line); padding: .7rem .85rem;
+    }
+    .panel-heading h2 { margin: 0; font-size: .87rem; letter-spacing: -.015em; }
+    .panel-index { margin-right: .35rem; color: var(--teal); font: 700 .66rem var(--mono); }
+    .unit-tag { color: var(--muted); font: .65rem var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+    .panel-content { padding: .8rem .85rem; }
+    .dropzone {
+      width: 100%; min-height: 7rem; padding: .6rem; border: 1px dashed #729493;
+      border-radius: .35rem; background: #edf3ec; color: var(--ink);
+      display: grid; justify-items: center; align-content: center; gap: .27rem; text-align: center;
+    }
+    .dropzone:hover, .dropzone.is-over { background: #dceee3; border-color: #287e74; }
+    .dropzone svg { color: var(--teal); }
+    .dropzone strong { font-size: .82rem; }
+    .dropzone span { color: var(--muted); font-size: .73rem; }
+    .reference-note { margin: .4rem 0 0; color: var(--muted); font: .65rem/1.4 var(--mono); }
+    .references { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .38rem; padding: 0; margin: .55rem 0 0; list-style: none; }
+    .references li { position: relative; min-width: 0; padding: .22rem; background: #eef0e9; border: 1px solid var(--line); border-radius: .3rem; }
+    .references img { display: block; width: 100%; height: 2.65rem; object-fit: contain; }
+    .references span { display: block; padding: .12rem .17rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .64rem; }
+    .remove {
+      position: absolute; top: .15rem; right: .15rem; display: grid; place-items: center;
+      width: 1.5rem; height: 1.5rem; border: 1px solid #4e5d5f; border-radius: .25rem;
+      padding: 0; color: #faf9f2; background: #243433; line-height: 1;
+    }
+    .remove:hover:not(:disabled) { background: #775346; }
+    .field-label { display: block; margin: 0 0 .35rem; font-size: .75rem; font-weight: 700; }
+    .brief-block { margin: .8rem 0 .65rem; }
+    textarea, select, input[type="number"] {
+      width: 100%; min-width: 0; border: 1px solid #b7beb3; border-radius: .3rem;
+      color: var(--ink); background: #fffef8;
+    }
+    textarea { display: block; resize: vertical; min-height: 6rem; padding: .55rem .58rem; font-size: .84rem; }
+    textarea::placeholder { color: #616b67; }
+    select { min-height: 2.12rem; padding: .32rem .38rem; font-size: .78rem; }
+    .hint { color: var(--muted); font-size: .72rem; line-height: 1.4; margin: .5rem 0 0; }
+    .status { min-height: 1.1rem; margin: .55rem 0 0; font-size: .74rem; color: #455f5b; overflow-wrap: anywhere; }
+    .status.error { color: #9c3b28; }
+    .preview { background: var(--night); border-color: #2d444b; color: #e6eeea; display: flex; flex-direction: column; }
+    .preview-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .7rem .85rem; border-bottom: 1px solid #36494e; }
+    .preview-top h2 { margin: 0; font-size: .88rem; letter-spacing: -.01em; }
+    .preview .panel-index { color: var(--gold); }
+    .state { flex-shrink: 0; color: #c8d7cf; font: .64rem var(--mono); }
+    .state::before { background: #98bc91; }
+    .state.dirty::before, .state.busy::before { background: var(--gold); }
+    .frame-area {
+      position: relative; min-width: 0; height: clamp(24rem, 58vh, 42rem);
+      background-image: linear-gradient(#688c8e16 1px, transparent 1px), linear-gradient(90deg, #688c8e16 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .frame-area iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--night); }
+    .empty-view {
+      position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center;
+      padding: 1rem; color: #c3d2ce;
+    }
+    .empty-view svg { color: #a9c9c3; margin-bottom: .6rem; }
+    .empty-view strong { color: #f5f1dd; font-size: .97rem; }
+    .empty-view p { margin: .3rem 0 0; font-size: .79rem; }
+    .preview-foot {
+      display: flex; justify-content: space-between; align-items: center; gap: .45rem;
+      padding: .5rem .85rem; border-top: 1px solid #36494e; color: #c2d0c9; font: .65rem var(--mono);
+    }
+    #model-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .measured { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 .65rem; border: 1px solid #c9d3c7; border-radius: .3rem; background: #eef3e9; }
+    .measured div { padding: .33rem .4rem .36rem; min-width: 0; }
+    .measured div + div { border-left: 1px solid #c9d3c7; }
+    .measured dt { font: 700 .64rem var(--mono); color: #465d59; }
+    .measured dd { margin: .12rem 0 0; font: 700 .82rem var(--mono); overflow-wrap: anywhere; }
+    .picker { display: block; margin-bottom: .55rem; }
+    .picker .field-label { margin-bottom: .22rem; }
+    .editor h3 { margin: 0 0 .25rem; font-size: .75rem; }
+    .number-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .32rem; margin-bottom: .45rem; }
+    .number-row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .number-row label { display: grid; gap: .18rem; min-width: 0; color: var(--muted); font-size: .66rem; }
+    input[type="number"] { min-height: 1.95rem; padding: .22rem .25rem .22rem .37rem; font: .79rem var(--mono); }
+    details { border-top: 1px solid #deded3; margin-top: .35rem; padding-top: .32rem; }
+    details + details { margin-top: .3rem; }
+    summary { cursor: pointer; font-size: .76rem; font-weight: 650; color: #334f50; }
+    details > div { padding-top: .35rem; }
+    .point-list { max-height: 11rem; overflow: auto; padding: .16rem .16rem 0; }
+    .point-list .number-row { margin-bottom: .35rem; }
+    .assumptions { margin: .4rem 0 0; padding-left: 1.1rem; color: var(--muted); font-size: .74rem; overflow-wrap: anywhere; }
+    .assumptions li + li { margin-top: .3rem; }
+    .rebuild-wrap { border-top: 1px solid var(--line); padding-top: .6rem; margin-top: .55rem; }
+    .page-foot { display: flex; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; color: var(--muted); font: .66rem var(--mono); margin-top: .85rem; }
+    .skip-link { position: absolute; top: -10rem; left: 1rem; padding: .5rem .8rem; background: var(--panel); color: var(--ink); z-index: 2; }
+    .skip-link:focus { top: 1rem; }
+    @media (max-width: 74rem) {
+      .layout { grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr) minmax(14rem, 16rem); }
+    }
+    @media (max-width: 61rem) {
+      .layout { grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr); }
+      .layout > :last-child { grid-column: 1 / -1; }
+      .frame-area { height: clamp(22rem, 53vh, 35rem); }
+    }
+    @media (max-width: 37rem) {
+      .masthead { align-items: flex-start; flex-direction: column; }
+      .intro { align-items: flex-start; }
+      .workcell { display: none; }
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .layout > :last-child { grid-column: auto; }
+      .frame-area { height: 24rem; }
+      .preview-foot { gap: .2rem .5rem; flex-wrap: wrap; }
+    }
+  </style>
+  <script defer src="workspace.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to workspace</a>
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">
+        <svg width="25" height="25" viewBox="0 0 28 28" fill="none"><path d="M5 21V7l9 8 9-8v14M9 21v-6l5 4 5-4v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round"/></svg>
+      </span>
+      <div><strong>MAGTEL</strong><small>Toy Factory</small></div>
+    </div>
+    <nav class="masthead-actions" aria-label="Project actions">
+      <button class="button light" id="load-demo" type="button">Load example</button>
+      <button class="button light" id="open-project" type="button">Open project</button>
+      <input id="project-file" type="file" accept=".json,application/json" hidden>
+      <button class="button light" id="save-project" type="button" disabled>Save JSON</button>
+      <button class="button primary" id="save-step" type="button" disabled>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3 3 3 3-3M3 12v2h10v-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download STEP
+      </button>
+    </nav>
+  </header>
+  <main id="main">
+    <div class="intro">
+      <div>
+        <p class="overline">Art to CAD</p>
+        <h1>Design workspace</h1>
+        <p>Build a part from reference art, then refine the geometry in place.</p>
+      </div>
+      <span class="workcell">Local workspace</span>
+    </div>
+    <div class="layout">
+      <section class="panel" aria-labelledby="art-title">
+        <div class="panel-heading">
+          <h2 id="art-title"><span class="panel-index" aria-hidden="true">01</span> Reference &amp; brief</h2>
+          <span class="unit-tag" id="reference-count">0 / 4</span>
+        </div>
+        <form id="generate-form" class="panel-content">
+          <input id="art-files" type="file" accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
+          <button id="dropzone" class="dropzone" type="button" aria-describedby="reference-note">
+            <svg aria-hidden="true" width="27" height="27" viewBox="0 0 28 28" fill="none"><path d="M4 18v5h20v-5M14 18V5m-5 5 5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <strong>Drop reference art</strong>
+            <span>or browse files</span>
+          </button>
+          <p class="reference-note" id="reference-note">PNG, JPEG or WebP · up to 4 views</p>
+          <ul class="references" id="references" aria-label="Attached references" hidden></ul>
+          <div class="brief-block">
+            <label class="field-label" for="brief">What are we building?</label>
+            <textarea id="brief" maxlength="4000" required placeholder="Make a 42 mm badge from the central symbol, with a 4 mm backing and raised detail."></textarea>
+          </div>
+          <button type="submit" class="button primary full" id="generate" disabled>Generate model</button>
+          <p class="hint">Generate sends the selected art and brief to Codex. Dimension edits rebuild locally.</p>
+          <p id="art-status" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="preview" aria-labelledby="preview-title">
+        <div class="preview-top">
+          <h2 id="preview-title"><span class="panel-index" aria-hidden="true">02</span> Model viewport</h2>
+          <span class="state busy" id="model-state">Loading</span>
+        </div>
+        <div class="frame-area" id="frame-area">
+          <iframe id="viewer" title="Interactive CAD viewport" sandbox="allow-scripts" hidden></iframe>
+          <div class="empty-view" id="empty-view">
+            <svg width="50" height="50" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="m24 4 17 10v20L24 44 7 34V14L24 4Z M7 14l17 10 17-10M24 24v20" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <strong>Preparing the example</strong>
+            <p>Drop your own art or try a ready-to-edit part.</p>
+          </div>
+        </div>
+        <div class="preview-foot">
+          <span id="model-name">No model loaded</span>
+          <span id="part-count">Orthographic · mm</span>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="editor-title">
+        <div class="panel-heading">
+          <h2 id="editor-title"><span class="panel-index" aria-hidden="true">03</span> Dimensions</h2>
+          <span class="unit-tag">mm / deg</span>
+        </div>
+        <div class="panel-content">
+          <p id="empty-inspector" class="hint">Load a model to edit its features.</p>
+          <form id="dimensions" novalidate hidden>
+            <dl class="measured" id="measured" aria-label="Measured part dimensions"></dl>
+            <label class="picker" for="part-picker"><span class="field-label">Part</span><select id="part-picker"></select></label>
+            <label class="picker" for="feature-picker"><span class="field-label">Feature</span><select id="feature-picker"></select></label>
+            <div class="editor" id="fields"></div>
+            <details id="assumption-panel" hidden>
+              <summary>Model assumptions</summary>
+              <ul class="assumptions" id="assumptions"></ul>
+            </details>
+            <div class="rebuild-wrap">
+              <button class="button primary full" id="rebuild" type="submit" disabled>Rebuild model</button>
+              <p id="dimension-status" class="status" role="status" aria-live="polite">Measurements reflect the last successful build.</p>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+    <footer class="page-foot"><span>MAGTEL TOY FACTORY / MODEL SHOP</span><span>Editable CAD projects · STEP exchange</span></footer>
+    <noscript><p>Enable JavaScript to use the design workspace.</p></noscript>
+  </main>
+</body>
+</html>

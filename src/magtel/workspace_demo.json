@@ -1,0 +1,337 @@
+{
+  "name": "Pivot mount",
+  "assumptions": [
+    "The demo is shown with the pin beside the mount so both parts are easy to inspect.",
+    "The nominal bore is 12 mm and the pin is 11.5 mm in diameter."
+  ],
+  "parts": [
+    {
+      "name": "Mounting plate",
+      "color": "#25968B",
+      "features": [
+        {
+          "operation": "add",
+          "kind": "extrude",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            4
+          ],
+          "profile": [
+            [
+              -22,
+              -18
+            ],
+            [
+              22,
+              -18
+            ],
+            [
+              26,
+              -14
+            ],
+            [
+              26,
+              14
+            ],
+            [
+              22,
+              18
+            ],
+            [
+              -22,
+              18
+            ],
+            [
+              -26,
+              14
+            ],
+            [
+              -26,
+              -14
+            ]
+          ],
+          "sections": []
+        },
+        {
+          "operation": "add",
+          "kind": "loft",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [],
+          "profile": [],
+          "sections": [
+            {
+              "z": 3.75,
+              "profile": [
+                [
+                  -12.0,
+                  -12
+                ],
+                [
+                  12.0,
+                  -12
+                ],
+                [
+                  15.5,
+                  -8.5
+                ],
+                [
+                  15.5,
+                  8.5
+                ],
+                [
+                  12.0,
+                  12
+                ],
+                [
+                  -12.0,
+                  12
+                ],
+                [
+                  -15.5,
+                  8.5
+                ],
+                [
+                  -15.5,
+                  -8.5
+                ]
+              ]
+            },
+            {
+              "z": 12,
+              "profile": [
+                [
+                  -9.5,
+                  -10
+                ],
+                [
+                  9.5,
+                  -10
+                ],
+                [
+                  12,
+                  -7.5
+                ],
+                [
+                  12,
+                  7.5
+                ],
+                [
+                  9.5,
+                  10
+                ],
+                [
+                  -9.5,
+                  10
+                ],
+                [
+                  -12,
+                  7.5
+                ],
+                [
+                  -12,
+                  -7.5
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "operation": "cut",
+          "kind": "cylinder",
+          "position": [
+            0,
+            0,
+            -1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            6,
+            15
+          ],
+          "profile": [],
+          "sections": []
+        },
+        {
+          "operation": "cut",
+          "kind": "cylinder",
+          "position": [
+            -19,
+            -10,
+            -1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2.35,
+            7
+          ],
+          "profile": [],
+          "sections": []
+        },
+        {
+          "operation": "cut",
+          "kind": "cylinder",
+          "position": [
+            19,
+            -10,
+            -1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2.35,
+            7
+          ],
+          "profile": [],
+          "sections": []
+        },
+        {
+          "operation": "cut",
+          "kind": "cylinder",
+          "position": [
+            -19,
+            10,
+            -1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2.35,
+            7
+          ],
+          "profile": [],
+          "sections": []
+        },
+        {
+          "operation": "cut",
+          "kind": "cylinder",
+          "position": [
+            19,
+            10,
+            -1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2.35,
+            7
+          ],
+          "profile": [],
+          "sections": []
+        }
+      ]
+    },
+    {
+      "name": "Registration pin",
+      "color": "#EE924C",
+      "features": [
+        {
+          "operation": "add",
+          "kind": "cylinder",
+          "position": [
+            39,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            5.75,
+            12
+          ],
+          "profile": [],
+          "sections": []
+        },
+        {
+          "operation": "add",
+          "kind": "extrude",
+          "position": [
+            39,
+            0,
+            11.75
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            3
+          ],
+          "profile": [
+            [
+              -5.9,
+              -7
+            ],
+            [
+              5.9,
+              -7
+            ],
+            [
+              8,
+              -4.9
+            ],
+            [
+              8,
+              4.9
+            ],
+            [
+              5.9,
+              7
+            ],
+            [
+              -5.9,
+              7
+            ],
+            [
+              -8,
+              4.9
+            ],
+            [
+              -8,
+              -4.9
+            ]
+          ],
+          "sections": []
+        }
+      ]
+    }
+  ]
+}

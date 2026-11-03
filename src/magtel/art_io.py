@@ -25,15 +25,25 @@ def load_art(path: Path) -> dict:
     return validate_art(data.get("recipe"))
 
 
-def _preview(recipe: dict, assembly, path: Path, *, force: bool) -> None:
+def art_preview_data(
+    recipe: dict, assembly, *, triangle_limit: int | None = None
+) -> tuple[dict, list[dict]]:
+    """Describe and tessellate the solids in an already-built art assembly."""
     parts = []
+    measurements = []
+    triangle_count = 0
     lines = [f'{recipe["name"]} — image-derived CAD']
     for spec, part in zip(recipe["parts"], assembly.children):
         vertices, triangles = part.tessellate(0.08)
         if not triangles:
             raise DesignError(f'Could not preview {spec["name"]}.')
+        triangle_count += len(triangles)
+        if triangle_limit is not None and triangle_count > triangle_limit:
+            raise DesignError("This model is too detailed for the workspace preview.")
         bounds = part.bounding_box().size
-        size = " × ".join(mm(value) for value in (bounds.X, bounds.Y, bounds.Z))
+        dimensions = [bounds.X, bounds.Y, bounds.Z]
+        measurements.append({"name": spec["name"], "size": dimensions})
+        size = " × ".join(mm(value) for value in dimensions)
         lines.append(f'  {spec["name"]} — {size} mm')
         parts.append({
             "name": spec["name"],
@@ -43,13 +53,12 @@ def _preview(recipe: dict, assembly, path: Path, *, force: bool) -> None:
         })
     if recipe["assumptions"]:
         lines += ["", "Assumptions", *(f"  • {line}" for line in recipe["assumptions"])]
-    data = {
+    return {
         "title": recipe["name"],
         "description": "\n".join(lines),
         "parts": parts,
         "assembly": False,
-    }
-    write_preview_data(data, path, force=force)
+    }, measurements
 
 
 def export_art(recipe: dict, path: Path, *, force: bool = False) -> None:
@@ -58,7 +67,8 @@ def export_art(recipe: dict, path: Path, *, force: bool = False) -> None:
         raise DesignError("Choose .step, .stp, .stl, or .html for an art project export.")
     assembly = build_art(recipe)
     if suffix == ".html":
-        _preview(recipe, assembly, path, force=force)
+        data, _ = art_preview_data(recipe, assembly)
+        write_preview_data(data, path, force=force)
         return
 
     from build123d import export_step, export_stl

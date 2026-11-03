@@ -119,6 +119,20 @@ include boxes, cylinders, extrusions, lofts, and cuts. This path can create
 multiple named solids for an assembly. Fine organic sculpting and automatically
 inferred moving joints are outside this version.
 
+## Work visually in MAGTEL Studio
+
+With the CAD extra installed, run `magtel studio`. The local workspace opens
+with an example you can rotate and zoom. Drop in one to four reference images,
+describe the part and give any dimensions it needs to meet, then choose
+**Generate**. Generation sends those images and the brief to your signed-in
+Codex CLI. The rest of the workspace runs locally.
+
+Use the inspector to change the feature dimensions and choose **Rebuild
+model**. The geometry updates in place and keeps your camera angle. Save a
+MAGTEL art project to continue later, or download a
+STEP file to open the exact solids in another CAD tool. Keep the terminal
+running while you work.
+
 ## Inspect a design in 3D
 
 Type `Preview it` in the workshop to open the current model in your browser.
