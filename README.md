@@ -95,6 +95,24 @@ magtel export car.magtel.json -o car-parts.zip
 Or open the [example car](examples/toy-car.magtel.json) with
 `magtel workshop examples/toy-car.magtel.json` from the source folder.
 
+## Inspect a design in 3D
+
+Type `Preview it` in the workshop to open the current model in your browser.
+Drag to orbit, scroll to zoom, and use the **Explode** slider on a car to
+separate the chassis, axles, and wheels. The viewer also has keyboard and
+on-screen controls.
+
+Open a saved part or car from the terminal:
+
+```sh
+magtel preview car.magtel.json
+```
+
+Use `magtel preview car.magtel.json -o car.html` or type `Preview car.html` in
+the workshop to save a standalone viewer you can share. It opens offline and
+shows a snapshot of the design. Preview again after an edit to see the new
+geometry. Keep the MAGTEL JSON to make further edits.
+
 ## Run it from scripts
 
 ```sh
@@ -126,7 +144,7 @@ Centimeters and inches are accepted and converted to millimeters. Block
 dimensions follow width × depth × height. Stud counts follow columns × rows.
 The studs are solid posts fused to the top of a flat-bottomed block.
 
-Version 0.2 uses a fixed vocabulary, part families, and a symmetric four-wheel
+Version 0.3 uses a fixed vocabulary, part families, and a symmetric four-wheel
 car assembly. Both axles share one design and all four wheels share one design.
 Unsupported descriptions return an error and leave the current design intact.
 The release exports

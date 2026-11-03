@@ -139,3 +139,21 @@ class WorkshopTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("chassis", result.stderr.lower())
             self.assertFalse(stl.exists())
+
+    def test_workshop_previews_current_edit_without_overwriting_saved_design(self):
+        with TemporaryDirectory() as folder:
+            wheel = Path(folder) / "wheel.magtel.json"
+            html = Path(folder) / "wheel preview.html"
+            result = run_cli("Make a wheel", "-o", str(wheel))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = run_cli("workshop", str(wheel), user_input="\n".join((
+                "Make it 45 mm across",
+                f'preview "{html}"',
+                "quit!",
+                "",
+            )))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            self.assertIn("3D preview:", result.stdout)
+            self.assertIn("Ø45", html.read_text(encoding="utf-8"))
+            self.assertIn("Ø40", run_cli("show", str(wheel)).stdout)

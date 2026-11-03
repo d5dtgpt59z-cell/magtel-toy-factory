@@ -2,7 +2,9 @@
 
 import argparse
 import sys
+import webbrowser
 from pathlib import Path
+from tempfile import mkdtemp
 
 from . import __version__
 from .assembly import CarSpec
@@ -11,6 +13,7 @@ from .assembly_language import parse_car, starts_car
 from .language import parse
 from .mesh import write_stl
 from .model import DesignError, ToySpec, mm
+from .preview import export_preview
 from .project import load_part, save_part, write_output
 
 EXAMPLES = (
@@ -25,6 +28,7 @@ CAR_EXAMPLES = (
     "Mount two 5.8 mm diameter, 60 mm long axles 55 mm apart.",
     "Put a 40 mm wheel, 10 mm thick, with a 6 mm hole on each end.",
 )
+PREVIEW_PHRASES = ("preview", "preview it", "show me the model")
 Design = ToySpec | CarSpec
 SHELL_HELP = """Describe a part, assembly, or change in plain language. Try:
   {make}
@@ -35,6 +39,9 @@ Workshop commands
   examples      Show requests you can try
   show          Read back your current design and dimensions
   fit           Check the fit of a complete car assembly
+  preview       Open the current design in a 3D viewer
+  preview FILE  Save a shareable .html viewer
+  preview! FILE Replace an existing viewer
   undo          Undo the last design change
   save FILE     Save editable MAGTEL JSON
   save! FILE    Replace an existing design file
@@ -104,6 +111,32 @@ def _save(spec: Design, path: Path, *, force: bool = False) -> None:
         print(f"Saved editable part to {path}.")
 
 
+def _preview(
+    spec: Design, path: Path | None = None, *, force: bool = False, open_viewer: bool = False
+) -> None:
+    if path is None:
+        folder = Path(mkdtemp(prefix="magtel-preview-"))
+        path = folder / "preview.html"
+        try:
+            export_preview(spec, path)
+        except (DesignError, OSError):
+            folder.rmdir()
+            raise
+        open_viewer = True
+    else:
+        if path.suffix.lower() != ".html":
+            raise DesignError("Use an .html file name for the 3D preview.")
+        export_preview(spec, path, force=force)
+    print(f"3D preview: {path.resolve()}")
+    if open_viewer:
+        try:
+            opened = webbrowser.open_new_tab(path.resolve().as_uri())
+        except (OSError, webbrowser.Error):
+            opened = False
+        if not opened:
+            print("Open the preview file in a browser to inspect the model.")
+
+
 def _parse_design(request: str, current: Design | None, *, car: bool = False) -> Design:
     if car or isinstance(current, CarSpec) or starts_car(request):
         assembly = current if isinstance(current, CarSpec) else None
@@ -156,6 +189,7 @@ def _workshop(start: Path | None = None, *, car: bool = False) -> int:
         command, *tail = request.split(maxsplit=1)
         command = command.lower()
         filename = tail[0] if tail else ""
+        phrase = request.lower().rstrip(".!?")
         try:
             if command in ("quit", "exit", "quit!", "exit!") and not tail:
                 if current != saved and current is not None and not command.endswith("!"):
@@ -166,7 +200,7 @@ def _workshop(start: Path | None = None, *, car: bool = False) -> int:
                 print(SHELL_HELP)
             elif command == "examples" and not tail:
                 _show_examples(car_only=isinstance(current, CarSpec))
-            elif request.lower().rstrip(".!?") in ("fit", "check fit", "check the fit"):
+            elif phrase in ("fit", "check fit", "check the fit"):
                 if not isinstance(current, CarSpec):
                     raise DesignError("Build or open a car first. For two saved parts, use magtel fit WHEEL AXLE.")
                 print(current.fit_report())
@@ -182,6 +216,11 @@ def _workshop(start: Path | None = None, *, car: bool = False) -> int:
                 saved = current
                 history.clear()
                 print(current.describe())
+            elif command in ("preview", "preview!") or phrase in PREVIEW_PHRASES:
+                if current is None:
+                    raise DesignError("Make or open a design first. Type examples for ideas.")
+                viewer_path = _path(filename, workshop=True) if filename and phrase not in PREVIEW_PHRASES else None
+                _preview(current, viewer_path, force=command.endswith("!"))
             elif command in ("show", "save", "save!", "export", "export!"):
                 if current is None:
                     raise DesignError("Make or open a design first. Type examples for ideas.")
@@ -231,6 +270,11 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("file")
     export.add_argument("-o", "--output", required=True, metavar="FILE", help="write a .stl or car parts .zip")
     export.add_argument("--force", action="store_true", help="replace an existing output file")
+    preview = commands.add_parser("preview", help="inspect a part or car in an offline 3D viewer")
+    preview.add_argument("file", metavar="DESIGN")
+    preview.add_argument("-o", "--output", metavar="FILE.html", help="save a standalone 3D viewer")
+    preview.add_argument("--open", dest="open_viewer", action="store_true", help="also open the saved viewer")
+    preview.add_argument("--force", action="store_true", help="replace an existing viewer")
     fit = commands.add_parser("fit", help="check a car assembly or a wheel and axle pair")
     fit.add_argument("design", metavar="CAR_OR_WHEEL")
     fit.add_argument("axle", nargs="?", metavar="AXLE")
@@ -242,7 +286,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"make", "assemble", "edit", "show", "export", "fit", "workshop", "examples"}
+    commands = {"make", "assemble", "edit", "show", "export", "preview", "fit", "workshop", "examples"}
     if argv and argv[0] not in commands and not argv[0].startswith("-"):
         argv.insert(0, "make")
     args = _parser().parse_args(argv)
@@ -266,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
             print(load_design(_design_path(args.file)).describe())
         elif args.command == "export":
             _export(load_design(_design_path(args.file)), _path(args.output), force=args.force)
+        elif args.command == "preview":
+            design = load_design(_design_path(args.file))
+            _preview(design, _path(args.output) if args.output else None,
+                     force=args.force, open_viewer=args.open_viewer)
         elif args.command == "fit":
             if args.axle:
                 return _fit(load_part(_design_path(args.design)), load_part(_design_path(args.axle)))

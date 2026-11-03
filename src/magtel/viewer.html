@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>%%TITLE%% — MAGTEL 3D preview</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2318282e'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23f2bd52' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%23f2bd52'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f2e9;
+      --ink: #18282e;
+      --secondary: #4e5d5f;
+      --line: #d3d3c5;
+      --accent: #f2bd52;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font: 15px/1.45 system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    :focus-visible { outline: 3px solid #13798a; outline-offset: 4px; }
+    .masthead {
+      background: var(--ink);
+      color: var(--paper);
+      padding: .85rem clamp(1rem, 4vw, 3.5rem);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .65rem 1.5rem;
+      flex-wrap: wrap;
+      border-bottom: 3px solid var(--accent);
+    }
+    .masthead strong { font-family: var(--mono); letter-spacing: .1em; font-size: .9rem; }
+    .masthead span { font: .72rem var(--mono); color: #d7dedb; text-transform: uppercase; letter-spacing: .1em; }
+    main { width: min(100%, 92rem); padding: clamp(1rem, 3vw, 2.5rem); margin: auto; }
+    .intro { margin: 0 0 1.2rem; }
+    .eyebrow { margin: 0 0 .4rem; text-transform: uppercase; font: bold .75rem var(--mono); letter-spacing: .12em; color: var(--secondary); }
+    h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 3.2rem); line-height: 1.02; letter-spacing: -.045em; overflow-wrap: anywhere; }
+    h2 { margin: 0 0 .6rem; font-size: .96rem; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem); gap: 1rem; align-items: start; }
+    .stage { min-width: 0; background: #101c24; color: #e6e9df; border: 1px solid #243943; border-radius: 6px; overflow: hidden; }
+    .stage-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem 1rem; padding: .7rem .9rem; border-bottom: 1px solid #33434b; color: #bfcecd; text-transform: uppercase; font: .71rem var(--mono); letter-spacing: .07em; }
+    .stage-head strong { color: var(--accent); }
+    .viewport { position: relative; }
+    canvas { display: block; width: 100%; height: clamp(19rem, 59vh, 42rem); touch-action: none; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+    .notice { position: absolute; inset: 0; margin: auto; height: max-content; width: min(90%, 26rem); padding: 1rem; border: 1px solid #59717b; background: #18282e; }
+    .notice[hidden] { display: none; }
+    .actions { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; padding: .65rem .8rem; background: #18282e; border-top: 1px solid #33434b; }
+    .actions button {
+      border: 1px solid #566a72;
+      border-radius: 3px;
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+      background: transparent;
+      color: #f2f1e5;
+      cursor: pointer;
+      padding: .2rem .65rem;
+    }
+    .actions button:hover { background: #29414b; }
+    .actions button:focus-visible { outline-color: var(--accent); }
+    .actions button:disabled { opacity: .55; cursor: default; }
+    .actions .reset { margin-left: auto; }
+    .hint { margin: 0; padding: .65rem .85rem; color: #bfcecd; font-size: .78rem; }
+    .panel { background: #fbf8ef; border: 1px solid var(--line); border-radius: 6px; padding: 1rem; min-width: 0; }
+    .panel section + section { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem; }
+    .range-row { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; }
+    .range-row label { font-weight: 700; }
+    output { font: .77rem var(--mono); color: var(--secondary); }
+    input { accent-color: #176778; }
+    input[type="range"] { width: 100%; margin: .55rem 0 .1rem; min-height: 1.75rem; cursor: pointer; }
+    .range-labels { display: flex; justify-content: space-between; font: .7rem var(--mono); color: var(--secondary); }
+    #parts { display: grid; gap: .12rem; }
+    #parts label { display: flex; align-items: center; gap: .55rem; min-height: 2rem; overflow-wrap: anywhere; cursor: pointer; }
+    #parts input { margin: 0; width: 1rem; height: 1rem; flex: none; }
+    .swatch { width: .72rem; height: .72rem; border: 1px solid #33434b; flex: none; border-radius: 2px; }
+    .description { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: .77rem/1.65 var(--mono); color: #36484e; }
+    @media (max-width: 48rem) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      canvas { height: clamp(16rem, 52svh, 33rem); }
+    }
+    @media (max-width: 23rem) {
+      .actions .reset { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <strong>MAGTEL TOY FACTORY</strong>
+    <span>3D inspection</span>
+  </header>
+  <main>
+    <div class="intro">
+      <p id="mode" class="eyebrow">Design preview</p>
+      <h1 id="title">%%TITLE%%</h1>
+    </div>
+    <div class="layout">
+      <div class="stage">
+        <div class="stage-head"><strong>Model space</strong><span id="grid-label">Orthographic · mm</span></div>
+        <div class="viewport">
+          <canvas id="model" tabindex="0" aria-label="Interactive 3D model" aria-describedby="controls-hint">
+            This browser does not display the 3D viewport.
+          </canvas>
+          <p class="notice" id="notice" hidden></p>
+        </div>
+        <div class="actions" id="camera-controls" role="group" aria-label="Camera controls">
+          <button type="button" data-camera="left" aria-label="Orbit left" title="Orbit left">←</button>
+          <button type="button" data-camera="right" aria-label="Orbit right" title="Orbit right">→</button>
+          <button type="button" data-camera="up" aria-label="Orbit up" title="Orbit up">↑</button>
+          <button type="button" data-camera="down" aria-label="Orbit down" title="Orbit down">↓</button>
+          <button type="button" data-camera="near" aria-label="Zoom in" title="Zoom in">+</button>
+          <button type="button" data-camera="far" aria-label="Zoom out" title="Zoom out">−</button>
+          <button type="button" data-camera="reset" class="reset">Reset view</button>
+        </div>
+        <p class="hint" id="controls-hint">Drag to orbit. Scroll or pinch to zoom. With the viewport focused, use arrow keys, + or −, and Home to reset.</p>
+      </div>
+      <aside class="panel" aria-label="Design information and display options">
+        <section id="explode-controls" hidden>
+          <div class="range-row">
+            <label for="explode">Explode assembly</label>
+            <output id="explosion" for="explode">0%</output>
+          </div>
+          <input type="range" id="explode" min="0" max="100" value="0" aria-valuetext="Assembled">
+          <div class="range-labels"><span>Assembled</span><span>Exploded</span></div>
+        </section>
+        <section>
+          <h2 id="parts-heading">Parts</h2>
+          <div id="parts" role="group" aria-labelledby="parts-heading"></div>
+        </section>
+        <section>
+          <h2>Dimensions &amp; details</h2>
+          <p class="description" id="description"></p>
+        </section>
+      </aside>
+    </div>
+    <noscript><p>Enable JavaScript to inspect the model.</p></noscript>
+  </main>
+  <script type="application/json" id="preview-data">%%DATA%%</script>
+  <script>
+    "use strict";
+
+    const data = JSON.parse(document.getElementById("preview-data").textContent);
+    const canvas = document.getElementById("model");
+    const notice = document.getElementById("notice");
+    const slider = document.getElementById("explode");
+    const output = document.getElementById("explosion");
+    const buttons = [...document.querySelectorAll("[data-camera]")];
+    const visibility = [];
+    const partsList = document.getElementById("parts");
+    const gl = canvas.getContext("webgl", {antialias: true, alpha: false});
+    const initialYaw = 1.01;
+    const initialPitch = 0.52;
+    let yaw = initialYaw;
+    let pitch = initialPitch;
+    let zoom = 1;
+    let exploded = 0;
+    let framePending = false;
+    let draw = null;
+
+    document.getElementById("description").textContent = data.description;
+    document.getElementById("mode").textContent = data.assembly ? "Assembly preview" : "Part preview";
+    document.getElementById("explode-controls").hidden = !data.assembly;
+    for (const part of data.parts) {
+      const label = document.createElement("label");
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = true;
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.backgroundColor = "rgb(" + part.color.map(x => Math.round(x * 255)).join(",") + ")";
+      swatch.setAttribute("aria-hidden", "true");
+      label.append(toggle, swatch, document.createTextNode(part.name));
+      partsList.append(label);
+      visibility.push(toggle);
+      toggle.addEventListener("change", schedule);
+    }
+
+    function schedule() {
+      if (draw === null || framePending) return;
+      framePending = true;
+      requestAnimationFrame(() => {
+        framePending = false;
+        if (draw) draw();
+      });
+    }
+
+    function unavailable(message) {
+      draw = null;
+      notice.textContent = message;
+      notice.hidden = false;
+      slider.disabled = true;
+      for (const button of buttons) button.disabled = true;
+      for (const checkbox of visibility) checkbox.disabled = true;
+    }
+
+    function shader(type, source) {
+      const handle = gl.createShader(type);
+      gl.shaderSource(handle, source);
+      gl.compileShader(handle);
+      if (!gl.getShaderParameter(handle, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(handle));
+      }
+      return handle;
+    }
+
+    function buffer(data) {
+      const handle = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, handle);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+      return handle;
+    }
+
+    function normals(v) {
+      const n = new Float32Array(v.length);
+      for (let i = 0; i < v.length; i += 9) {
+        const ax = v[i + 3] - v[i], ay = v[i + 4] - v[i + 1], az = v[i + 5] - v[i + 2];
+        const bx = v[i + 6] - v[i], by = v[i + 7] - v[i + 1], bz = v[i + 8] - v[i + 2];
+        const x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx;
+        const magnitude = Math.hypot(x, y, z) || 1;
+        for (let j = i; j < i + 9; j += 3) {
+          n[j] = x / magnitude;
+          n[j + 1] = y / magnitude;
+          n[j + 2] = z / magnitude;
+        }
+      }
+      return n;
+    }
+
+    function setupRenderer() {
+      const vertex = shader(gl.VERTEX_SHADER, `
+        attribute vec3 aPosition;
+        attribute vec3 aNormal;
+        uniform vec3 uOffset, uTarget, uRight, uUp;
+        uniform mediump vec3 uToward;
+        uniform vec2 uScale;
+        uniform float uDepth;
+        varying mediump vec3 vNormal;
+        void main() {
+          vec3 p = aPosition + uOffset - uTarget;
+          gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
+            -dot(p, uToward) / uDepth, 1.0);
+          vNormal = aNormal;
+        }`);
+      const fragment = shader(gl.FRAGMENT_SHADER, `
+        precision mediump float;
+        varying mediump vec3 vNormal;
+        uniform vec3 uColor;
+        uniform mediump vec3 uToward;
+        uniform bool uLit;
+        void main() {
+          float light = 1.0;
+          if (uLit) {
+            vec3 n = normalize(vNormal);
+            vec3 key = normalize(vec3(0.25, 0.45, 1.0));
+            light = 0.40 + 0.43 * max(dot(n, key), 0.0)
+              + 0.17 * max(dot(n, uToward), 0.0);
+          }
+          gl_FragColor = vec4(uColor * light, 1.0);
+        }`);
+      const program = gl.createProgram();
+      gl.attachShader(program, vertex);
+      gl.attachShader(program, fragment);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+      gl.useProgram(program);
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      gl.clearColor(16 / 255, 28 / 255, 36 / 255, 1);
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.CULL_FACE);
+      gl.cullFace(gl.BACK);
+
+      const position = gl.getAttribLocation(program, "aPosition");
+      const normal = gl.getAttribLocation(program, "aNormal");
+      const uniform = Object.fromEntries(
+        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit"]
+          .map(name => [name, gl.getUniformLocation(program, "u" + name)])
+      );
+      const low = [Infinity, Infinity, Infinity];
+      const high = [-Infinity, -Infinity, -Infinity];
+      const objects = data.parts.map((part) => {
+        const v = part.vertices;
+        for (let i = 0; i < v.length; i++) {
+          const axis = i % 3;
+          low[axis] = Math.min(low[axis], v[i]);
+          high[axis] = Math.max(high[axis], v[i]);
+        }
+        return {position: buffer(v), normal: buffer(normals(v)), count: v.length / 3};
+      });
+      const target = low.map((value, axis) => (value + high[axis]) / 2);
+      let radius = 0;
+      let spread = 0;
+      for (const part of data.parts) {
+        const v = part.vertices;
+        const [dx, dy, dz] = part.explode;
+        for (let i = 0; i < v.length; i += 3) {
+          const x = v[i] - target[0], y = v[i + 1] - target[1], z = v[i + 2] - target[2];
+          radius = Math.max(radius, Math.hypot(x, y, z));
+          spread = Math.max(spread, Math.hypot(x + dx, y + dy, z + dz));
+        }
+      }
+
+      const requestedStep = radius / 5;
+      const decade = 10 ** Math.floor(Math.log10(requestedStep));
+      const step = decade * [1, 2, 5, 10].find(value => value * decade >= requestedStep);
+      const count = Math.ceil(Math.max(radius, spread) * 1.4 / step);
+      const size = count * step;
+      const ground = low[2] - radius * 0.012;
+      const grid = [];
+      for (let i = -count; i <= count; i++) {
+        const line = i * step;
+        grid.push(target[0] - size, target[1] + line, ground,
+          target[0] + size, target[1] + line, ground,
+          target[0] + line, target[1] - size, ground,
+          target[0] + line, target[1] + size, ground);
+      }
+      const gridBuffer = buffer(grid);
+      document.getElementById("grid-label").textContent =
+        "Orthographic · " + Number(step.toPrecision(3)) + " mm grid";
+
+      function attribute(index, handle) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, handle);
+        gl.enableVertexAttribArray(index);
+        gl.vertexAttribPointer(index, 3, gl.FLOAT, false, 0, 0);
+      }
+
+      gl.uniform3fv(uniform.Target, target);
+      gl.uniform1f(uniform.Depth, Math.max(radius, spread, size) * 3);
+      return () => {
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
+        const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        gl.viewport(0, 0, width, height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const cx = Math.cos(yaw), cy = Math.sin(yaw);
+        const cp = Math.cos(pitch), sp = Math.sin(pitch);
+        const aspect = width / height;
+        const extent = (radius + (Math.max(radius, spread) - radius) * exploded) * 1.15 / zoom;
+        gl.uniform3f(uniform.Right, -cy, cx, 0);
+        gl.uniform3f(uniform.Up, -cx * sp, -cy * sp, cp);
+        gl.uniform3f(uniform.Toward, cx * cp, cy * cp, sp);
+        gl.uniform2f(uniform.Scale, extent * Math.max(1, aspect), extent * Math.max(1, 1 / aspect));
+
+        attribute(position, gridBuffer);
+        gl.disableVertexAttribArray(normal);
+        gl.uniform1i(uniform.Lit, 0);
+        gl.uniform3f(uniform.Color, 0.18, 0.25, 0.29);
+        gl.uniform3f(uniform.Offset, 0, 0, 0);
+        gl.drawArrays(gl.LINES, 0, grid.length / 3);
+
+        gl.uniform1i(uniform.Lit, 1);
+        objects.forEach((object, i) => {
+          if (!visibility[i].checked) return;
+          const part = data.parts[i];
+          attribute(position, object.position);
+          attribute(normal, object.normal);
+          gl.uniform3fv(uniform.Color, part.color);
+          gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
+          gl.drawArrays(gl.TRIANGLES, 0, object.count);
+        });
+      };
+    }
+
+    function orbit(horizontal, vertical) {
+      yaw += horizontal;
+      pitch = Math.max(-1.48, Math.min(1.48, pitch + vertical));
+      schedule();
+    }
+
+    function magnify(factor) {
+      zoom = Math.max(.4, Math.min(5, zoom * factor));
+      schedule();
+    }
+
+    function reset() {
+      yaw = initialYaw;
+      pitch = initialPitch;
+      zoom = 1;
+      schedule();
+    }
+
+    const camera = {
+      left: () => orbit(-.19, 0), right: () => orbit(.19, 0),
+      up: () => orbit(0, .14), down: () => orbit(0, -.14),
+      near: () => magnify(1.18), far: () => magnify(1 / 1.18), reset,
+    };
+    const keys = {
+      ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+      "+": "near", "=": "near", "-": "far", Home: "reset",
+    };
+    for (const button of buttons) {
+      button.addEventListener("click", () => camera[button.dataset.camera]());
+    }
+    canvas.addEventListener("keydown", (event) => {
+      if (!draw || !Object.hasOwn(keys, event.key)) return;
+      event.preventDefault();
+      camera[keys[event.key]]();
+    });
+    slider.addEventListener("input", () => {
+      exploded = Number(slider.value) / 100;
+      output.value = slider.value + "%";
+      slider.setAttribute("aria-valuetext", exploded ? output.value + " exploded" : "Assembled");
+      schedule();
+    });
+    canvas.addEventListener("wheel", (event) => {
+      if (!draw || event.ctrlKey) return;
+      event.preventDefault();
+      const step = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+      magnify(Math.exp(-Math.max(-220, Math.min(220, event.deltaY * step)) * .002));
+    }, {passive: false});
+
+    const pointers = new Map();
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!draw || event.button !== 0 || pointers.size === 2) return;
+      pointers.set(event.pointerId, [event.clientX, event.clientY]);
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!pointers.has(event.pointerId)) return;
+      const [oldX, oldY] = pointers.get(event.pointerId);
+      const x = event.clientX, y = event.clientY;
+      if (pointers.size === 2) {
+        const otherId = [...pointers.keys()].find(id => id !== event.pointerId);
+        const [otherX, otherY] = pointers.get(otherId);
+        const previousDistance = Math.hypot(oldX - otherX, oldY - otherY);
+        const distance = Math.hypot(x - otherX, y - otherY);
+        if (previousDistance > 1 && distance > 1) magnify(distance / previousDistance);
+      } else {
+        orbit(-.009 * (x - oldX), .009 * (y - oldY));
+      }
+      pointers.set(event.pointerId, [x, y]);
+    });
+    for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      canvas.addEventListener(name, event => pointers.delete(event.pointerId));
+    }
+    canvas.addEventListener("webglcontextlost", () => {
+      unavailable("The 3D connection was interrupted. Reload this file to try again.");
+    });
+
+    if (!gl) {
+      unavailable("WebGL is unavailable in this browser. The dimensions and component list are still available.");
+    } else {
+      try {
+        draw = setupRenderer();
+        if ("ResizeObserver" in window) new ResizeObserver(schedule).observe(canvas);
+        window.addEventListener("resize", schedule);
+        schedule();
+      } catch (error) {
+        console.error(error);
+        unavailable("The 3D preview could not start. The dimensions and component list are still available.");
+      }
+    }
+  </script>
+</body>
+</html>
