@@ -177,6 +177,7 @@ function fitDetails(fit) {
 
 function install(model, {fresh = false, variant = null} = {}) {
   current.model = model;
+  message("");
   if (variant === null) {
     current.variants = [];
     message("", false, "#variant-status");
@@ -402,7 +403,7 @@ $("#file").addEventListener("change", (event) => {
 $("#export").addEventListener("click", () => perform(async () => {
   const blob = await request("export", {design: current.model.design});
   download(blob, "magtel-invention.zip");
-  message("Invention sheet ZIP downloaded.", false, "#file-status");
+  message("Invention sheet ZIP download started.", false, "#file-status");
 }, "Packaging the sheet, renders, and STL meshes…", "#file-status"));
 
 invent(starter, true);
