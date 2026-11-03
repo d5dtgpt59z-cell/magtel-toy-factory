@@ -155,6 +155,9 @@
     .assumptions { margin: .4rem 0 0; padding-left: 1.1rem; color: var(--muted); font-size: .74rem; overflow-wrap: anywhere; }
     .assumptions li + li { margin-top: .3rem; }
     .rebuild-wrap { border-top: 1px solid var(--line); padding-top: .6rem; margin-top: .55rem; }
+    .history-actions { display: flex; gap: .35rem; margin-top: .4rem; }
+    .history-actions .button { flex: 1; }
+    #discard-edits { margin-top: .4rem; }
     .page-foot { display: flex; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; color: var(--muted); font: .66rem var(--mono); margin-top: .85rem; }
     .skip-link { position: absolute; top: -10rem; left: 1rem; padding: .5rem .8rem; background: var(--panel); color: var(--ink); z-index: 2; }
     .skip-link:focus { top: 1rem; }
@@ -269,6 +272,11 @@
             </details>
             <div class="rebuild-wrap">
               <button class="button primary full" id="rebuild" type="submit" disabled>Rebuild model</button>
+              <button class="button full" id="discard-edits" type="button" hidden>Discard edits</button>
+              <div class="history-actions" role="group" aria-label="Model history">
+                <button class="button" id="undo" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled>Undo</button>
+                <button class="button" id="redo" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>Redo</button>
+              </div>
               <p id="dimension-status" class="status" role="status" aria-live="polite">Measurements reflect the last successful build.</p>
             </div>
           </form>

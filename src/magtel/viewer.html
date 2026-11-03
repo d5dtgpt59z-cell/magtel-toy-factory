@@ -194,7 +194,9 @@
     let exploded = 0;
     let framePending = false;
     let cameraPending = false;
+    let selectedPart = embedded && data.parts.length ? 0 : -1;
     let draw = null;
+    let pickPart = null;
 
     document.getElementById("description").textContent = data.description;
     document.getElementById("mode").textContent = data.assembly ? "Assembly preview" : "Part preview";
@@ -214,6 +216,8 @@
       toggle.addEventListener("change", schedule);
     }
     if (embedded) {
+      document.getElementById("controls-hint").textContent =
+        "Click a part to select it. Drag to orbit. Scroll or pinch to zoom.";
       const panel = partsList.closest(".panel");
       panel.hidden = true;
       panel.id = "viewport-parts";
@@ -237,7 +241,15 @@
       }
       window.addEventListener("message", (event) => {
         const state = event.data;
-        if (event.source !== window.parent || !state || state.type !== "magtel-camera"
+        if (event.source !== window.parent || !state) return;
+        if (state.type === "magtel-select-part") {
+          if (Number.isInteger(state.index) && state.index >= 0 && state.index < data.parts.length) {
+            selectedPart = state.index;
+            schedule();
+          }
+          return;
+        }
+        if (state.type !== "magtel-camera"
             || ![state.yaw, state.pitch, state.zoom].every(Number.isFinite)
             || Math.abs(state.yaw) > 2 * Math.PI || Math.abs(state.pitch) > 1.48
             || state.zoom < .4 || state.zoom > 5) return;
@@ -257,6 +269,7 @@
 
     function unavailable(message) {
       draw = null;
+      pickPart = null;
       notice.textContent = message;
       notice.hidden = false;
       slider.disabled = true;
@@ -397,26 +410,95 @@
         gl.vertexAttribPointer(index, 3, gl.FLOAT, false, 0, 0);
       }
 
-      gl.uniform3fv(uniform.Target, target);
       gl.uniform1f(uniform.Depth, Math.max(radius, spread, size) * 3);
-      return () => {
+      function drawingSize() {
         const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-        const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
-        const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
+        return [
+          Math.max(1, Math.round(canvas.clientWidth * pixelRatio)),
+          Math.max(1, Math.round(canvas.clientHeight * pixelRatio)),
+        ];
+      }
+
+      function applyView(width, height, pixel = null) {
+        const cx = Math.cos(yaw), cy = Math.sin(yaw);
+        const cp = Math.cos(pitch), sp = Math.sin(pitch);
+        const aspect = width / height;
+        const extent = (radius + (Math.max(radius, spread) - radius) * exploded) * 1.15 / zoom;
+        const scale = [extent * Math.max(1, aspect), extent * Math.max(1, 1 / aspect)];
+        const right = [-cy, cx, 0];
+        const up = [-cx * sp, -cy * sp, cp];
+        gl.uniform3fv(uniform.Right, right);
+        gl.uniform3fv(uniform.Up, up);
+        gl.uniform3f(uniform.Toward, cx * cp, cy * cp, sp);
+        if (pixel) {
+          // Reframe the same orthographic view onto the selected pixel of a 1×1 framebuffer.
+          const x = (2 * (pixel[0] + .5) / width - 1) * scale[0];
+          const y = (2 * (pixel[1] + .5) / height - 1) * scale[1];
+          gl.uniform3fv(uniform.Target, target.map((value, axis) => value + x * right[axis] + y * up[axis]));
+          gl.uniform2f(uniform.Scale, scale[0] / width, scale[1] / height);
+        } else {
+          gl.uniform3fv(uniform.Target, target);
+          gl.uniform2fv(uniform.Scale, scale);
+        }
+      }
+
+      function drawObjects(picking) {
+        gl.uniform1i(uniform.Lit, picking ? 0 : 1);
+        if (picking) gl.disableVertexAttribArray(normal);
+        objects.forEach((object, i) => {
+          if (!visibility[i].checked) return;
+          const part = data.parts[i];
+          attribute(position, object.position);
+          if (picking) {
+            const id = i + 1;
+            gl.uniform3f(uniform.Color, (id & 255) / 255, ((id >> 8) & 255) / 255, (id >> 16) / 255);
+          } else {
+            attribute(normal, object.normal);
+            const color = i === selectedPart
+              ? part.color.map((value, axis) => value * .58 + [1, .78, .33][axis] * .42)
+              : part.color;
+            gl.uniform3fv(uniform.Color, color);
+          }
+          gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
+          gl.drawArrays(gl.TRIANGLES, 0, object.count);
+        });
+      }
+
+      if (embedded) {
+        const pickBuffer = makePickTarget();
+        if (pickBuffer) {
+          const result = new Uint8Array(4);
+          pickPart = (clientX, clientY) => {
+            const rect = canvas.getBoundingClientRect();
+            if (clientX < rect.left || clientX >= rect.right || clientY < rect.top || clientY >= rect.bottom) return -1;
+            const [width, height] = drawingSize();
+            const x = Math.floor((clientX - rect.left) * width / rect.width);
+            const y = height - 1 - Math.floor((clientY - rect.top) * height / rect.height);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, pickBuffer);
+            gl.viewport(0, 0, 1, 1);
+            gl.disable(gl.DITHER);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            applyView(width, height, [x, y]);
+            drawObjects(true);
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, result);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.enable(gl.DITHER);
+            gl.clearColor(16 / 255, 28 / 255, 36 / 255, 1);
+            return result[0] + result[1] * 256 + result[2] * 65536 - 1;
+          };
+        }
+      }
+
+      return () => {
+        const [width, height] = drawingSize();
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
         }
         gl.viewport(0, 0, width, height);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        const cx = Math.cos(yaw), cy = Math.sin(yaw);
-        const cp = Math.cos(pitch), sp = Math.sin(pitch);
-        const aspect = width / height;
-        const extent = (radius + (Math.max(radius, spread) - radius) * exploded) * 1.15 / zoom;
-        gl.uniform3f(uniform.Right, -cy, cx, 0);
-        gl.uniform3f(uniform.Up, -cx * sp, -cy * sp, cp);
-        gl.uniform3f(uniform.Toward, cx * cp, cy * cp, sp);
-        gl.uniform2f(uniform.Scale, extent * Math.max(1, aspect), extent * Math.max(1, 1 / aspect));
+        applyView(width, height);
 
         attribute(position, gridBuffer);
         gl.disableVertexAttribArray(normal);
@@ -425,17 +507,30 @@
         gl.uniform3f(uniform.Offset, 0, 0, 0);
         gl.drawArrays(gl.LINES, 0, grid.length / 3);
 
-        gl.uniform1i(uniform.Lit, 1);
-        objects.forEach((object, i) => {
-          if (!visibility[i].checked) return;
-          const part = data.parts[i];
-          attribute(position, object.position);
-          attribute(normal, object.normal);
-          gl.uniform3fv(uniform.Color, part.color);
-          gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
-          gl.drawArrays(gl.TRIANGLES, 0, object.count);
-        });
+        drawObjects(false);
       };
+    }
+
+    function makePickTarget() {
+      const framebuffer = gl.createFramebuffer();
+      const color = gl.createTexture();
+      const depth = gl.createRenderbuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.bindTexture(gl.TEXTURE_2D, color);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, 1, 1);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+      const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (complete) return framebuffer;
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(color);
+      gl.deleteRenderbuffer(depth);
+      return null;
     }
 
     function orbit(horizontal, vertical) {
@@ -478,6 +573,15 @@
     for (const button of buttons) {
       button.addEventListener("click", () => camera[button.dataset.camera]());
     }
+    if (embedded) document.addEventListener("keydown", (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "z") return;
+      event.preventDefault();
+      if (!event.repeat) {
+        window.parent.postMessage({
+          type: "magtel-history", direction: event.shiftKey ? "redo" : "undo",
+        }, "*");
+      }
+    });
     canvas.addEventListener("keydown", (event) => {
       if (!draw || !Object.hasOwn(keys, event.key)) return;
       event.preventDefault();
@@ -497,8 +601,13 @@
     }, {passive: false});
 
     const pointers = new Map();
+    const tapSlop = 4;
+    let tap = null;
     canvas.addEventListener("pointerdown", (event) => {
       if (!draw || event.button !== 0 || pointers.size === 2) return;
+      tap = pickPart && pointers.size === 0
+        ? {id: event.pointerId, x: event.clientX, y: event.clientY}
+        : null;
       pointers.set(event.pointerId, [event.clientX, event.clientY]);
       canvas.setPointerCapture(event.pointerId);
     });
@@ -506,6 +615,8 @@
       if (!pointers.has(event.pointerId)) return;
       const [oldX, oldY] = pointers.get(event.pointerId);
       const x = event.clientX, y = event.clientY;
+      if (tap && Math.hypot(x - tap.x, y - tap.y) <= tapSlop) return;
+      tap = null;
       if (pointers.size === 2) {
         const otherId = [...pointers.keys()].find(id => id !== event.pointerId);
         const [otherX, otherY] = pointers.get(otherId);
@@ -517,8 +628,24 @@
       }
       pointers.set(event.pointerId, [x, y]);
     });
-    for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      canvas.addEventListener(name, event => pointers.delete(event.pointerId));
+    canvas.addEventListener("pointerup", (event) => {
+      if (pickPart && tap?.id === event.pointerId
+          && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) <= tapSlop) {
+        const index = pickPart(event.clientX, event.clientY);
+        if (index >= 0 && index < data.parts.length) {
+          selectedPart = index;
+          schedule();
+          window.parent.postMessage({type: "magtel-select-part", index}, "*");
+        }
+      }
+      if (tap?.id === event.pointerId) tap = null;
+      pointers.delete(event.pointerId);
+    });
+    for (const name of ["pointercancel", "lostpointercapture"]) {
+      canvas.addEventListener(name, event => {
+        if (tap?.id === event.pointerId) tap = null;
+        pointers.delete(event.pointerId);
+      });
     }
     canvas.addEventListener("webglcontextlost", () => {
       unavailable("The 3D connection was interrupted. Reload this file to try again.");

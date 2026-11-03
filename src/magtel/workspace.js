@@ -5,14 +5,20 @@ const viewer = byId("viewer");
 const dimensions = byId("dimensions");
 const partPicker = byId("part-picker");
 const featurePicker = byId("feature-picker");
+const undoButton = byId("undo");
+const redoButton = byId("redo");
+const discardButton = byId("discard-edits");
 const artFiles = byId("art-files");
 const projectFile = byId("project-file");
 const brief = byId("brief");
 const dropzone = byId("dropzone");
 const maxImageBytes = 16 * 1024 * 1024;
 const maxTotalBytes = 32 * 1024 * 1024;
+const maxHistoryEntries = 50;
 
 const references = [];
+const undoHistory = [];
+const redoHistory = [];
 let currentRecipe = null;
 let draft = null;
 let measurements = [];
@@ -37,6 +43,10 @@ function refreshControls() {
   const working = Boolean(busy);
   byId("generate").disabled = working || !references.length || !brief.value.trim();
   byId("rebuild").disabled = working || !dirty || !draft;
+  undoButton.disabled = working || dirty || !undoHistory.length;
+  redoButton.disabled = working || dirty || !redoHistory.length;
+  discardButton.disabled = working;
+  discardButton.hidden = !dirty;
   byId("load-demo").disabled = working;
   byId("open-project").disabled = working;
   byId("save-project").disabled = working || !currentRecipe || dirty;
@@ -51,6 +61,8 @@ function refreshControls() {
     demo: "Loading example",
     generate: "Generating",
     rebuild: "Rebuilding",
+    undo: "Undoing",
+    redo: "Redoing",
     open: "Opening project",
     step: "Exporting STEP",
   };
@@ -210,7 +222,7 @@ function measurePart() {
 function markEdit() {
   dirty = JSON.stringify(draft) !== JSON.stringify(currentRecipe);
   setStatus("dimension-status", dirty
-    ? "Rebuild to preview and export your edits."
+    ? "Rebuild or discard pending edits to use model history."
     : "Measurements reflect the last successful build.");
   refreshControls();
 }
@@ -322,7 +334,14 @@ function renderPart(featureIndex = 0, keepOpen = false) {
   renderFeature(keepOpen);
 }
 
-partPicker.addEventListener("change", () => renderPart());
+function sendSelectedPart() {
+  viewer.contentWindow.postMessage({type: "magtel-select-part", index: Number(partPicker.value)}, "*");
+}
+
+partPicker.addEventListener("change", () => {
+  renderPart();
+  sendSelectedPart();
+});
 featurePicker.addEventListener("change", () => renderFeature());
 
 function applyModel(payload, preserve = false) {
@@ -332,7 +351,11 @@ function applyModel(payload, preserve = false) {
   draft = structuredClone(currentRecipe);
   measurements = payload.parts;
   dirty = false;
-  if (!preserve) camera = null;
+  if (!preserve) {
+    camera = null;
+    undoHistory.length = 0;
+    redoHistory.length = 0;
+  }
 
   byId("empty-view").hidden = true;
   viewer.hidden = false;
@@ -353,7 +376,22 @@ function applyModel(payload, preserve = false) {
 }
 
 window.addEventListener("message", event => {
-  if (event.source !== viewer.contentWindow || event.origin !== "null" || event.data?.type !== "magtel-camera") return;
+  if (event.source !== viewer.contentWindow || event.origin !== "null") return;
+  if (event.data?.type === "magtel-select-part") {
+    const {index} = event.data;
+    if (Number.isInteger(index) && draft?.parts[index] && index !== Number(partPicker.value)) {
+      partPicker.value = String(index);
+      renderPart();
+      refreshControls();
+    }
+    return;
+  }
+  if (event.data?.type === "magtel-history") {
+    const {direction} = event.data;
+    if (direction === "undo" || direction === "redo") changeHistory(direction);
+    return;
+  }
+  if (event.data?.type !== "magtel-camera") return;
   const {yaw, pitch, zoom} = event.data;
   if ([yaw, pitch, zoom].every(Number.isFinite) && Math.abs(yaw) <= 2 * Math.PI
       && Math.abs(pitch) <= 1.48 && zoom >= 0.4 && zoom <= 5) {
@@ -362,6 +400,7 @@ window.addEventListener("message", event => {
 });
 viewer.addEventListener("load", () => {
   if (camera) viewer.contentWindow.postMessage(camera, "*");
+  if (currentRecipe) sendSelectedPart();
 });
 
 function loadDemo() {
@@ -397,9 +436,47 @@ dimensions.addEventListener("submit", event => {
     return;
   }
   run("rebuild", "dimension-status", "Rebuilding your dimensions…", async () => {
+    const previous = currentRecipe;
     applyModel(await request("api/rebuild", {recipe: draft}), true);
+    undoHistory.push(previous);
+    if (undoHistory.length > maxHistoryEntries) undoHistory.shift();
+    redoHistory.length = 0;
     setStatus("dimension-status", "Model rebuilt with your dimensions.");
   });
+});
+
+function changeHistory(direction) {
+  const undoing = direction === "undo";
+  const from = undoing ? undoHistory : redoHistory;
+  const to = undoing ? redoHistory : undoHistory;
+  if (busy || dirty || !from.length) return false;
+  run(direction, "dimension-status", undoing ? "Undoing the last rebuild…" : "Redoing the last rebuild…", async () => {
+    const previous = currentRecipe;
+    applyModel(await request("api/rebuild", {recipe: from.at(-1)}), true);
+    from.pop();
+    to.push(previous);
+    setStatus("dimension-status", undoing ? "Rebuild undone." : "Rebuild redone.");
+  });
+  return true;
+}
+
+undoButton.addEventListener("click", () => changeHistory("undo"));
+redoButton.addEventListener("click", () => changeHistory("redo"));
+discardButton.addEventListener("click", () => {
+  if (busy || !dirty) return;
+  draft = structuredClone(currentRecipe);
+  dirty = false;
+  renderPart(Number(featurePicker.value), true);
+  setStatus("dimension-status", "Pending edits discarded.");
+  refreshControls();
+  featurePicker.focus();
+});
+
+document.addEventListener("keydown", event => {
+  if (event.defaultPrevented || event.repeat || event.altKey || !(event.ctrlKey || event.metaKey)
+      || event.key.toLowerCase() !== "z") return;
+  if (event.target.closest?.("input, textarea, select") || event.target.isContentEditable) return;
+  if (changeHistory(event.shiftKey ? "redo" : "undo")) event.preventDefault();
 });
 
 byId("open-project").addEventListener("click", () => projectFile.click());
