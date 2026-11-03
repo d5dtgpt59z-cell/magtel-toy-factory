@@ -15,11 +15,11 @@ use the studio. It opens a WebGL-capable browser at a private loopback address.
 Use `magtel dream --no-open` to print the address and open it yourself. The
 studio and exports work without internet access after installation.
 
-1. **Invent.** Try “Design a futuristic six-wheeled moon rover for kids.”
-   Dream Mode maps plain language to a supported vehicle and shows which
-   details became geometry and which remain concept notes. Try a compact
-   racer or a chunky rescue truck for a different starting point. New designs
-   include shaped body pieces that regenerate when the chassis changes size.
+1. **Invent.** Dream Mode opens on **Slipstream**, a low-slung speedform with
+   a continuous loft, flush canopy paint, and molded turbine wheels. Try
+   “A sleek low-slung silver speedform” or one of the rover, racer, and truck
+   examples. The studio describes which details became geometry and which
+   remain concept notes. Styled body pieces regenerate as the chassis changes.
 2. **Build.** Pick a part in the viewport and drag its handles. The inspector
    offers the same controls as numeric fields, plus colors and nominal fit.
    Axle placement, wheel dimensions, and wheel gaps are linked across the
@@ -43,7 +43,7 @@ studio and exports work without internet access after installation.
 
 **Scope.** The offline prompt interpreter builds symmetric four- or six-wheel
 vehicle prototypes from known parts and dimensions. The studio regenerates
-triangle meshes from those parameters. Rover, racer, and truck body kits use separate lofted solids with flat
+triangle meshes from those parameters. Slipstream uses one lofted upper shell. The other body kits use separate solids. All use flat
 mounting surfaces. They require adhesive or retention before handling.
 Unsupported styling and mechanisms remain concept notes. The virtual test estimates longitudinal motion with
 simple geometry and assumed surface parameters. Its rolling and barrier

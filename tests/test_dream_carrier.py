@@ -38,10 +38,10 @@ class DreamCarrierTests(unittest.TestCase):
 
     def test_glue_on_module_footprints_are_supported_by_sculpted_roof(self):
         for length, width, height, wheelbase in (
-            (127, 43, 19, 90), (86, 33, 9, 62), (112, 47, 25, 73), (68, 26, 12, 58),
+            (132, 46, 7.8, 95), (127, 43, 19, 90), (86, 33, 9, 62), (112, 47, 25, 73), (68, 26, 12, 58),
         ):
             base = _bored_chassis(length, width, height, wheelbase, 3.1)
-            for style in ("lunar", "racer", "truck"):
+            for style in ("lunar", "racer", "truck", "stream"):
                 with self.subTest(length=length, width=width, height=height, style=style):
                     shaped = shape_carrier(base, style, length, height, wheelbase, 6.2)
                     roof = [face for face in shaped if all(z == height for _, _, z in face)]

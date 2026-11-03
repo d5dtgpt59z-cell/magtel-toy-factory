@@ -111,6 +111,21 @@ class DreamWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(reopened["design"], variant)
 
+    def test_slipstream_paint_regions_and_stl_share_one_shell(self):
+        status, _, model = self.request("/api/invent", {"prompt": "A sleek midnight blue speedform"})
+        self.assertEqual(status, 200)
+        parts = {part["id"]: part for part in model["parts"]}
+        self.assertEqual([key for key in parts if key.startswith("body-")], ["body-stream"])
+        for key in ("body-stream", "front-left-wheel", "rear-right-wheel"):
+            region = parts[key]["paint"]
+            self.assertTrue(region["faces"])
+            self.assertLess(max(region["faces"]), len(parts[key]["vertices"]) // 9)
+        status, _, body = self.request("/api/export", {"design": model["design"]})
+        self.assertEqual(status, 200)
+        with ZipFile(io.BytesIO(body)) as archive:
+            self.assertIn("stl/body-stream.stl", archive.namelist())
+            self.assertIn(b'"paint":', archive.read("preview.html"))
+
     def test_accepts_legacy_complete_car(self):
         path = Path(__file__).resolve().parents[1] / "examples" / "toy-car.magtel.json"
         original = json.loads(path.read_text(encoding="utf-8"))

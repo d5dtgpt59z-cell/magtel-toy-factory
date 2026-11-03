@@ -46,6 +46,8 @@ def studio_data(spec: DreamSpec) -> dict[str, object]:
                 "dimensions": spec.body_dimensions(key),
                 "color": design["body_colors"][module.role],
             })
+            if module.accent_faces:
+                part["paint"] = {"color": design["body_colors"]["accent"], "faces": sorted(module.accent_faces)}
             top = (diameter + design["height"]) / 2
             bottom = min(point[2] for face in triangles for point in face)
             stacked = bottom > top + 1e-6
@@ -53,6 +55,18 @@ def studio_data(spec: DreamSpec) -> dict[str, object]:
         else:
             part.update({"name": key.replace("-", " ").title(), "color": design["colors"][kind]})
             if kind == "wheel":
+                if design["wheel_profile"] == "stream":
+                    thickness, bore = design["wheel_thickness"], design["wheel_bore"]
+                    relief = min(diameter * 0.06, (diameter - bore) / 4, thickness / 3)
+                    shoulder = diameter / 2 - relief * 0.68
+                    radius = bore / 2 + (shoulder - bore / 2) * 0.91
+                    hub_x = design["wheelbase"] / 2 if key.startswith("front") else (
+                        -design["wheelbase"] / 2 if key.startswith("rear") else 0
+                    )
+                    accent = [index for index, face in enumerate(triangles) if all(
+                        math.hypot(x - hub_x, z - diameter / 2) <= radius + 1e-6 for x, _, z in face
+                    )]
+                    part["paint"] = {"color": design["colors"]["axle"], "faces": accent}
                 offset = (0, wheel_travel if "-left-" in key else -wheel_travel, 0)
             elif kind == "chassis":
                 offset = (0, 0, chassis_lift)
@@ -75,12 +89,17 @@ def studio_data(spec: DreamSpec) -> dict[str, object]:
 
 def dream_preview_html(spec: DreamSpec, data: dict | None = None) -> str:
     data = studio_data(spec) if data is None else data
+    parts = []
+    for part in data["parts"]:
+        item = {**part, "color": [channel / 255 for channel in _rgb(part["color"])]}
+        if paint := part.get("paint"):
+            item["paint"] = {**paint, "color": [channel / 255 for channel in _rgb(paint["color"])]}
+        parts.append(item)
     return preview_html({
         "title": spec.design["name"],
         "description": spec.describe(),
         "assembly": True,
-        "parts": [{**part, "color": [channel / 255 for channel in _rgb(part["color"])]}
-                  for part in data["parts"]],
+        "parts": parts,
     })
 
 
@@ -146,6 +165,9 @@ def _render(parts: list[dict], *, exploded: bool, axes=(_RIGHT, _UP, _VIEW),
         vertices = part["vertices"]
         offset = part["explode"] if exploded else (0, 0, 0)
         color = _rgb(part["color"])
+        paint = part.get("paint")
+        painted = set(paint["faces"]) if paint else set()
+        accent = _rgb(paint["color"]) if paint else color
         for i in range(0, len(vertices), 9):
             a, b, c = [tuple(vertices[j + axis] + offset[axis] for axis in range(3))
                        for j in (i, i + 3, i + 6)]
@@ -155,7 +177,8 @@ def _render(parts: list[dict], *, exploded: bool, axes=(_RIGHT, _UP, _VIEW),
             if _dot(normal, view) <= 1e-12:
                 continue
             light = 0.61 + 0.39 * max(0, _dot(normal, _LIGHT) / math.hypot(*normal))
-            fill = bytes(round(channel * light) for channel in color)
+            source = accent if i // 9 in painted else color
+            fill = bytes(round(channel * light) for channel in source)
             points = [(_dot(p, right), -_dot(p, up), _dot(p, view)) for p in (a, b, c)]
             projected.append((points, fill))
         if exploded and any(offset):

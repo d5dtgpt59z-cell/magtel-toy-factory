@@ -22,11 +22,12 @@ _FIELDS = (
 )
 _PARTS = ("chassis", "axle", "wheel")
 _BODY_ROLES = ("shell", "accent", "equipment")
-_RECIPE_BODIES = {"Lunar Rover": "lunar", "Pocket Racer": "racer",
+_RECIPE_BODIES = {"Slipstream": "stream", "Lunar Rover": "lunar", "Pocket Racer": "racer",
                   "Rescue Truck": "truck", "Workshop Buggy": "racer"}
 _VARIANT_BODIES = {"ribbed": "truck", "beveled": "racer", "balloon": "truck",
                    "crowned": "lunar", "stepped": "racer"}
 _BODY_COLORS = {
+    "stream": ("#2e5380", "#141b2c", "#b5becc"),
     "plain": ("#e5eae7", "#28394a", "#db8f26"),
     "lunar": ("#eef1db", "#24405a", "#ffa032"),
     "racer": ("#fbf2da", "#1d2f44", "#e8a33d"),
@@ -42,18 +43,21 @@ _PROFILES = {
     "stepped": ("Cartoon Vehicle", "#ed84c2", "#754d99"),
 }
 _RECIPE_COLORS = {
+    "Slipstream": ("#2e5380", "#181d26"),
     "Lunar Rover": ("#b7ef58", "#384067"),
     "Pocket Racer": ("#fdaf42", "#343b42"),
     "Rescue Truck": ("#c390f4", "#3f3248"),
     "Workshop Buggy": ("#ff693c", "#303b55"),
 }
 _COLORS = {
+    "midnight blue": "#2e5380", "silver": "#b4c2d0",
     "lime green": "#b7ef58", "lime": "#b7ef58", "green": "#5de399",
     "pink": "#ff80a5", "orange": "#ff703c", "red": "#ee495e", "yellow": "#ffd459",
     "blue": "#5f9ffc", "teal": "#53e5d3", "purple": "#ae8af3",
     "black": "#34364a", "white": "#eef0f7",
 }
 _RECIPES = {
+    "Slipstream": (2, 132, 46, 7.8, 26, 8.5, 95, "stream"),
     "Lunar Rover": (3, 127, 43, 19, 35, 12, 90, "crowned"),
     "Pocket Racer": (2, 86, 33, 9, 25, 8, 62, "beveled"),
     "Rescue Truck": (2, 112, 47, 25, 44, 14, 73, "ribbed"),
@@ -62,6 +66,7 @@ _RECIPES = {
 _STYLE_RULES = (
     ("Lunar Rover", r"\b(?:moon|lunar|mars|space|rover)\b"),
     ("Rescue Truck", r"\b(?:rescue|truck|heavy[ -]duty|monster)\b"),
+    ("Slipstream", r"\b(?:slipstream|speedform|sleek|low[ -]slung|streamlin(?:ed|e)|supercar|hypercar)\b"),
     ("Pocket Racer", r"\b(?:race|racer|racing|speed|pocket[ -]sized|low[ -]profile)\b"),
 )
 _COUNT_WORDS = {
@@ -138,7 +143,7 @@ def invent(prompt: str) -> dict:
 
     if re.search(r"\bwide wheels\b", idea):
         thickness = max(thickness, 13)
-    if re.search(r"\blow[ -]profile wheels\b", idea):
+    if profile != "stream" and re.search(r"\blow[ -]profile wheels\b", idea):
         profile = "beveled"
     if re.search(r"\b(?:monster truck|oversized wheels)\b", idea):
         diameter, thickness, profile = max(diameter, 52), max(thickness, 16), "balloon"
@@ -180,7 +185,8 @@ def invent(prompt: str) -> dict:
         "axle_count": axles, **dimensions, "wheel_bore": 6.2,
         "axle_diameter": 5.8, "axle_length": dimensions["width"] + 2 * (dimensions["wheel_thickness"] + 3),
         "wheel_gap": 1.2, "axle_clearance": 0.4, "wheel_profile": profile,
-        "colors": {"chassis": color if style == "plain" else _UNDERCARRIAGE, "axle": "#c8d0dc", "wheel": tires},
+        "colors": {"chassis": color if style in ("plain", "stream") else _UNDERCARRIAGE,
+                   "axle": "#a5afbf" if profile == "stream" else "#c8d0dc", "wheel": tires},
         "body_style": style,
         "body_colors": _body_palette(style, color),
     }
@@ -212,7 +218,7 @@ def build(design: object) -> "DreamSpec":
     if type(design.get("axle_count")) is not int or design["axle_count"] not in (2, 3):
         raise DesignError("Use two or three axles for a four- or six-wheel toy.")
     profile = design.get("wheel_profile")
-    if not isinstance(profile, str) or (profile != "straight" and profile not in _PROFILES):
+    if not isinstance(profile, str) or (profile not in ("straight", "stream") and profile not in _PROFILES):
         raise DesignError("Choose a supported wheel profile.")
     colors = design.get("colors")
     if not isinstance(colors, dict) or colors.keys() != set(_PARTS) or not all(
@@ -444,6 +450,8 @@ def _profiled_wheel(diameter: float, thickness: float, bore: float, profile: str
         "stepped": ((0, 0.55), (0.16, 0.55), (0.16, 1.25), (0.30, 1.25),
                     (0.30, 0), (0.70, 0), (0.70, 1.25), (0.84, 1.25),
                     (0.84, 0.55), (1, 0.55)),
+        "stream": ((0, 0.68), (0.045, 0.34), (0.10, 0.10), (0.17, 0),
+                   (0.83, 0), (0.90, 0.10), (0.955, 0.34), (1, 0.68)),
     }
     radius = diameter / 2
     relief = min(diameter * 0.06, (radius - bore / 2) / 2, thickness / 3)
@@ -461,17 +469,28 @@ def _profiled_wheel(diameter: float, thickness: float, bore: float, profile: str
     # The lands at the bore and the shoulders retain the full nominal span.
     shoulder = radius - relief * profiles[profile][0][1]
     web = shoulder - bore / 2
-    depth = min(thickness * 0.26, web * 0.29)
-    spokes = {"beveled": 6, "crowned": 6, "ribbed": 8, "balloon": 4, "stepped": 8}[profile]
-    pockets = [
-        depth * max(0, min(1, (0.86 - math.cos(spokes * i * math.tau / _CIRCLE_SEGMENTS)) / 0.66))
-        for i in range(_CIRCLE_SEGMENTS)
-    ]
-    face_rings = [
-        [(x * (bore / 2 + web * fraction), y * (bore / 2 + web * fraction), pocket if recessed else 0)
-         for (x, y), pocket in zip(directions, pockets)]
-        for fraction, recessed in ((0.21, False), (0.34, True), (0.73, True), (0.86, False))
-    ]
+    if profile == "stream":
+        depth = min(thickness * 0.34, web * 0.29)
+        sections = ((0.16, 0), (0.26, 0.55), (0.37, 1), (0.66, 1),
+                    (0.80, 1), (0.85, 0.4), (0.91, 0))
+        spokes = 5
+    else:
+        depth = min(thickness * 0.26, web * 0.29)
+        sections = ((0.21, 0), (0.34, 1), (0.73, 1), (0.86, 0))
+        spokes = {"beveled": 6, "crowned": 6, "ribbed": 8, "balloon": 4, "stepped": 8}[profile]
+    face_rings = []
+    for fraction, inset in sections:
+        # Sweeping and tapering the five raised blades gives the low-profile
+        # tire a turbine face while leaving the bore and rim lands intact.
+        sweep = 0.54 * fraction ** 1.7 if profile == "stream" else 0
+        edge = 0.67 + 0.25 * fraction if profile == "stream" else 0.86
+        ring_radius = bore / 2 + web * fraction
+        ring = []
+        for index, (x, y) in enumerate(directions):
+            wave = math.cos(spokes * (index * math.tau / _CIRCLE_SEGMENTS - sweep))
+            pocket = depth * inset * max(0, min(1, (edge - wave) / 0.66))
+            ring.append((x * ring_radius, y * ring_radius, pocket))
+        face_rings.append(ring)
     cap_base = [bore_base, *face_rings, rings[0]]
     cap_top = [bore_top, *([(x, y, thickness - z) for x, y, z in ring] for ring in face_rings), rings[-1]]
     faces = []

@@ -234,21 +234,25 @@
       const vertex = shader(gl.VERTEX_SHADER, `
         attribute vec3 aPosition;
         attribute vec3 aNormal;
+        attribute float aPaint;
         uniform vec3 uOffset, uTarget, uRight, uUp;
         uniform mediump vec3 uToward;
         uniform vec2 uScale;
         uniform float uDepth;
         varying mediump vec3 vNormal;
+        varying mediump float vPaint;
         void main() {
           vec3 p = aPosition + uOffset - uTarget;
           gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
             -dot(p, uToward) / uDepth, 1.0);
           vNormal = aNormal;
+          vPaint = aPaint;
         }`);
       const fragment = shader(gl.FRAGMENT_SHADER, `
         precision mediump float;
         varying mediump vec3 vNormal;
-        uniform vec3 uColor;
+        varying mediump float vPaint;
+        uniform vec3 uColor, uAccent;
         uniform mediump vec3 uToward;
         uniform bool uLit;
         void main() {
@@ -259,7 +263,7 @@
             light = 0.40 + 0.43 * max(dot(n, key), 0.0)
               + 0.17 * max(dot(n, uToward), 0.0);
           }
-          gl_FragColor = vec4(uColor * light, 1.0);
+          gl_FragColor = vec4(mix(uColor, uAccent, vPaint) * light, 1.0);
         }`);
       const program = gl.createProgram();
       gl.attachShader(program, vertex);
@@ -278,8 +282,9 @@
 
       const position = gl.getAttribLocation(program, "aPosition");
       const normal = gl.getAttribLocation(program, "aNormal");
+      const paint = gl.getAttribLocation(program, "aPaint");
       const uniform = Object.fromEntries(
-        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit"]
+        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Accent", "Lit"]
           .map(name => [name, gl.getUniformLocation(program, "u" + name)])
       );
       const low = [Infinity, Infinity, Infinity];
@@ -291,7 +296,13 @@
           low[axis] = Math.min(low[axis], v[i]);
           high[axis] = Math.max(high[axis], v[i]);
         }
-        return {position: buffer(v), normal: buffer(normals(v)), count: v.length / 3};
+        let mask = null;
+        if (part.paint) {
+          const values = new Float32Array(v.length / 3);
+          for (const face of part.paint.faces) values.fill(1, face * 3, face * 3 + 3);
+          mask = buffer(values);
+        }
+        return {position: buffer(v), normal: buffer(normals(v)), mask, count: v.length / 3};
       });
       const target = low.map((value, axis) => (value + high[axis]) / 2);
       let radius = 0;
@@ -324,10 +335,10 @@
       document.getElementById("grid-label").textContent =
         "Orthographic · " + Number(step.toPrecision(3)) + " mm grid";
 
-      function attribute(index, handle) {
+      function attribute(index, handle, size = 3) {
         gl.bindBuffer(gl.ARRAY_BUFFER, handle);
         gl.enableVertexAttribArray(index);
-        gl.vertexAttribPointer(index, 3, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(index, size, gl.FLOAT, false, 0, 0);
       }
 
       gl.uniform3fv(uniform.Target, target);
@@ -353,6 +364,8 @@
 
         attribute(position, gridBuffer);
         gl.disableVertexAttribArray(normal);
+        gl.disableVertexAttribArray(paint);
+        gl.vertexAttrib1f(paint, 0);
         gl.uniform1i(uniform.Lit, 0);
         gl.uniform3f(uniform.Color, 0.18, 0.25, 0.29);
         gl.uniform3f(uniform.Offset, 0, 0, 0);
@@ -364,7 +377,10 @@
           const part = data.parts[i];
           attribute(position, object.position);
           attribute(normal, object.normal);
+          if (object.mask) attribute(paint, object.mask, 1);
+          else gl.disableVertexAttribArray(paint);
           gl.uniform3fv(uniform.Color, part.color);
+          gl.uniform3fv(uniform.Accent, part.paint?.color ?? part.color);
           gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
           gl.drawArrays(gl.TRIANGLES, 0, object.count);
         });

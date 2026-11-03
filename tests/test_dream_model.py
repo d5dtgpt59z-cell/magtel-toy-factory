@@ -35,6 +35,21 @@ class DreamModelTests(unittest.TestCase):
         self.assertEqual(invent("Pink pocket-sized race car")["concept"], "Pocket Racer")
         self.assertEqual(invent("Orange rescue truck with wide wheels")["concept"], "Rescue Truck")
 
+    def test_slipstream_uses_a_single_loft_and_closed_turbine_wheels(self):
+        spec = build(invent("A sleek low-slung midnight blue speedform"))
+        self.assertEqual(spec.name, "Slipstream")
+        self.assertEqual(spec.design["body_style"], "stream")
+        self.assertEqual(spec.design["wheel_profile"], "stream")
+        self.assertEqual(list(spec.body_modules), ["body-stream"])
+        shell = spec.body_modules["body-stream"]
+        self.assertTrue(shell.accent_faces)
+        self.assertLess(max(shell.accent_faces), len(shell.faces))
+        self.assertLess(spec.dimensions()["height"], 0.27 * spec.dimensions()["length"])
+        parts = spec.part_meshes()
+        self.assert_closed_stl(parts["body-stream"], euler=2)
+        self.assert_closed_stl(parts["wheel"], euler=0)
+        self.assertEqual(bounds(parts["wheel"]), [(-13.0, 13.0), (-13.0, 13.0), (0, 8.5)])
+
     def test_notes_disclose_unimplemented_requests_and_fit(self):
         prototype = invent("Eight-wheeled flying electric monster truck with LED lights")
         self.assertEqual(prototype["axle_count"], 2)
