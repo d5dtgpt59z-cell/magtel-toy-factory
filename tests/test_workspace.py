@@ -173,6 +173,23 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(status, 403)
 
     @unittest.skipUnless(find_spec("build123d"), "requires the optional CAD engine")
+    def test_generate_from_text_builds_editable_preview(self):
+        with patch("magtel.workspace.interpret_art", return_value=RECIPE) as provider:
+            status, _, body = self._request("POST", "api/generate", {"brief": "  ", "images": []})
+            self.assertEqual(status, 422, body)
+            provider.assert_not_called()
+
+            status, _, body = self._request("POST", "api/generate", {
+                "brief": " Build a 10 × 12 × 2 mm block. ", "images": [],
+            })
+            self.assertEqual(status, 200, body)
+            provider.assert_called_once_with([], "Build a 10 × 12 × 2 mm block.")
+            data = json.loads(body)
+            self.assertEqual(data["recipe"], RECIPE)
+            self.assertEqual(data["parts"][0]["size"], [10, 12, 2])
+            self.assertIn('"embed":true', data["viewer"])
+
+    @unittest.skipUnless(find_spec("build123d"), "requires the optional CAD engine")
     def test_dimension_edit_rebuilds_preview_and_step_without_the_provider(self):
         edited = json.loads(json.dumps(RECIPE))
         edited["parts"][0]["features"][0]["size"][2] = 7

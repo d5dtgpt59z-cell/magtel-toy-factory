@@ -53,13 +53,13 @@ def _recipe_request(data: dict):
 
 def _generate_recipe(data: dict, directory: Path) -> dict:
     if data.keys() != {"brief", "images"}:
-        raise DesignError("Supply reference images and a build brief.")
+        raise DesignError("Supply a build brief and a list of optional reference images.")
     brief = data["brief"]
     if not isinstance(brief, str) or not brief.strip() or len(brief) > _MAX_BRIEF_CHARS:
         raise DesignError(f"Describe the part in 1 to {_MAX_BRIEF_CHARS:,} characters.")
     images = data["images"]
-    if not isinstance(images, list) or not 1 <= len(images) <= _MAX_IMAGES:
-        raise DesignError(f"Supply one to {_MAX_IMAGES} reference images.")
+    if not isinstance(images, list) or len(images) > _MAX_IMAGES:
+        raise DesignError(f"Attach up to {_MAX_IMAGES} reference images.")
 
     attachments = []
     remaining = _MAX_TOTAL_IMAGE_BYTES

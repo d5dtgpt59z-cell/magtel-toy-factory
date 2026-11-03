@@ -28,6 +28,8 @@ let carPose = null;
 let fitReport = "";
 let busy = "";
 let dirty = false;
+let composing = false;
+let submittedBuild = false;
 
 function isCar() {
   return currentRecipe?.format === carFormat;
@@ -49,12 +51,18 @@ function setStatus(id, message, error = false) {
 function refreshControls() {
   const working = Boolean(busy);
   const canExport = !working && currentRecipe && !dirty;
-  byId("generate").disabled = working || !references.length || !brief.value.trim();
+  const hasBrief = Boolean(brief.value.trim());
+  byId("generate").disabled = working || !hasBrief;
+  byId("brief-help").textContent = hasBrief
+    ? "Include any important dimensions."
+    : "Type a description to enable Generate model.";
   byId("rebuild").disabled = working || !dirty || !draft;
   undoButton.disabled = working || dirty || !undoHistory.length;
   redoButton.disabled = working || dirty || !redoHistory.length;
   discardButton.disabled = working;
   discardButton.hidden = !dirty;
+  byId("new-build").disabled = working;
+  byId("return-fit").disabled = working;
   byId("load-car").disabled = working;
   byId("load-demo").disabled = working;
   byId("open-project").disabled = working;
@@ -104,6 +112,7 @@ function renderReferences() {
     remove.type = "button";
     remove.setAttribute("aria-label", "Remove " + reference.file.name);
     remove.addEventListener("click", () => {
+      submittedBuild = false;
       references.splice(index, 1);
       URL.revokeObjectURL(reference.url);
       setStatus("art-status", "");
@@ -137,6 +146,7 @@ function addFiles(files) {
       continue;
     }
     total += file.size;
+    submittedBuild = false;
     references.push({file, url: URL.createObjectURL(file)});
   }
   setStatus("art-status", [...new Set(errors)].join(" "), errors.length > 0);
@@ -166,7 +176,10 @@ for (const type of ["dragover", "drop"]) {
     if (event.dataTransfer.types.includes("Files")) event.preventDefault();
   });
 }
-brief.addEventListener("input", refreshControls);
+brief.addEventListener("input", () => {
+  submittedBuild = false;
+  refreshControls();
+});
 
 function base64(file) {
   return new Promise((resolve, reject) => {
@@ -207,7 +220,7 @@ async function run(action, status, pendingMessage, operation) {
     setStatus(status, error.message || "The workspace operation failed.", true);
     if (!currentRecipe) {
       byId("empty-view").querySelector("strong").textContent = "No model loaded";
-      byId("empty-view").querySelector("p").textContent = "Load an example, open a project, or generate a part from your art.";
+      byId("empty-view").querySelector("p").textContent = "Describe a part, load an example, or open a project.";
     }
   } finally {
     busy = "";
@@ -428,6 +441,15 @@ partPicker.addEventListener("change", () => {
 });
 featurePicker.addEventListener("change", () => renderFeature());
 
+function renderSource() {
+  const showFit = isCar() && !composing;
+  byId("source-title").textContent = showFit ? "Assembly fit" : "Build brief";
+  byId("generate-form").hidden = showFit;
+  byId("car-fit").hidden = !showFit;
+  byId("fit-tag").hidden = !showFit;
+  byId("return-fit").hidden = !isCar();
+}
+
 function applyModel(payload, preserve = false) {
   const previousPart = preserve ? Number(partPicker.value) : 0;
   const previousFeature = preserve ? Number(featurePicker.value) : 0;
@@ -436,6 +458,7 @@ function applyModel(payload, preserve = false) {
   measurements = payload.parts;
   dirty = false;
   if (!preserve) {
+    composing = false;
     camera = null;
     carPose = null;
     undoHistory.length = 0;
@@ -444,16 +467,12 @@ function applyModel(payload, preserve = false) {
   }
 
   const car = isCar();
-  byId("workspace-kicker").textContent = car ? "Assembly workshop" : "Art to CAD";
+  byId("workspace-kicker").textContent = car ? "Assembly workshop" : "Part design";
   byId("workspace-title").textContent = car ? "Toy car assembly" : "Design workspace";
   byId("workspace-description").textContent = car
     ? "Select a part in the viewport, test its fit, and download it for printing."
-    : "Build a part from reference art, then refine the geometry in place.";
-  byId("source-title").textContent = car ? "Assembly fit" : "Reference & brief";
-  byId("reference-count").hidden = car;
-  byId("generate-form").hidden = car;
-  byId("car-fit").hidden = !car;
-  byId("fit-tag").hidden = !car;
+    : "Describe a part, then refine the geometry in place. Reference art is optional.";
+  renderSource();
   byId("feature-selection").hidden = car;
   byId("car-settings").hidden = !car;
   byId("save-step").hidden = car;
@@ -523,10 +542,28 @@ viewer.addEventListener("load", () => {
 function loadDemo() {
   run("demo", "art-status", "Loading the example…", async () => {
     applyModel(await request("api/demo"));
-    setStatus("art-status", "Example ready. Try editing its dimensions or attach your own art.");
+    setStatus("art-status", "Example ready. Try editing its dimensions or describe your own build.");
   });
 }
 
+byId("new-build").addEventListener("click", () => {
+  if (submittedBuild) {
+    brief.value = "";
+    for (const reference of references.splice(0)) URL.revokeObjectURL(reference.url);
+    submittedBuild = false;
+    renderReferences();
+  }
+  composing = true;
+  renderSource();
+  setStatus("art-status", currentRecipe ? "Your current model stays open until the new one is ready." : "");
+  brief.focus();
+});
+byId("return-fit").addEventListener("click", () => {
+  composing = false;
+  renderSource();
+  setStatus("art-status", "");
+  byId("check-fit").focus();
+});
 byId("load-demo").addEventListener("click", loadDemo);
 byId("load-car").addEventListener("click", () => {
   run("car", "art-status", "Loading the toy car…", async () => {
@@ -547,13 +584,15 @@ byId("check-fit").addEventListener("click", () => {
 byId("generate-form").addEventListener("submit", event => {
   event.preventDefault();
   const requestBrief = brief.value.trim();
-  if (!references.length || !requestBrief) return;
-  run("generate", "art-status", "Interpreting the references and building the model…", async () => {
+  if (busy || !requestBrief) return;
+  if (dirty && !window.confirm("A new model will replace your current model and its pending dimension edits. Continue?")) return;
+  run("generate", "art-status", "Building the model from your description…", async () => {
     const images = await Promise.all(references.map(async ({file}) => ({
       name: file.name,
       data: await base64(file),
     })));
     applyModel(await request("api/generate", {brief: requestBrief, images}));
+    submittedBuild = true;
     setStatus("art-status", "Model generated. Review the dimensions and assumptions.");
   });
 });

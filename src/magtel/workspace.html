@@ -54,6 +54,8 @@
     .button.light:focus-visible { outline-color: var(--gold); }
     .button.primary { background: #eec474; border-color: #aa8445; color: #1e2b2d; }
     .button.primary:hover:not(:disabled) { background: #f7d58b; }
+    .button.new-build { border-color: var(--gold); color: #f5d791; }
+    .button.new-build:hover:not(:disabled) { background: #3e3a2e; }
     .button.full { width: 100%; }
     .button svg { flex: none; }
     main { width: min(100%, 116rem); margin: auto; padding: 1.35rem clamp(.85rem, 2.8vw, 2.45rem) 1.5rem; }
@@ -98,7 +100,8 @@
     }
     .remove:hover:not(:disabled) { background: #775346; }
     .field-label { display: block; margin: 0 0 .35rem; font-size: .75rem; font-weight: 700; }
-    .brief-block { margin: .8rem 0 .65rem; }
+    .brief-block { margin: 0 0 .65rem; }
+    .reference-block { margin: .85rem 0 .65rem; }
     textarea, select, input[type="number"] {
       width: 100%; min-width: 0; border: 1px solid #b7beb3; border-radius: .3rem;
       color: var(--ink); background: #fffef8;
@@ -111,6 +114,7 @@
     .status.error { color: #9c3b28; }
     #art-status { margin: 0; padding: 0 .85rem .65rem; }
     #art-status:empty { display: none; }
+    #return-fit { margin-top: .65rem; }
     .fit-readout { margin: .65rem 0 0; border-block: 1px solid var(--line); }
     .fit-readout div { padding: .45rem 0; }
     .fit-readout div + div { border-top: 1px solid #e5e4da; }
@@ -199,6 +203,10 @@
       <div><strong>MAGTEL</strong><small>Toy Factory</small></div>
     </div>
     <nav class="masthead-actions" aria-label="Project actions">
+      <button class="button light new-build" id="new-build" type="button">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        New build
+      </button>
       <button class="button light" id="load-car" type="button">Load toy car</button>
       <button class="button light" id="load-demo" type="button">Load example</button>
       <button class="button light" id="open-project" type="button">Open project</button>
@@ -214,34 +222,37 @@
   <main id="main">
     <div class="intro">
       <div>
-        <p class="overline" id="workspace-kicker">Art to CAD</p>
+        <p class="overline" id="workspace-kicker">Part design</p>
         <h1 id="workspace-title">Design workspace</h1>
-        <p id="workspace-description">Build a part from reference art, then refine the geometry in place.</p>
+        <p id="workspace-description">Describe a part, then refine the geometry in place. Reference art is optional.</p>
       </div>
       <span class="workcell">Local workspace</span>
     </div>
     <div class="layout">
       <section class="panel" aria-labelledby="art-title">
         <div class="panel-heading">
-          <h2 id="art-title"><span class="panel-index" aria-hidden="true">01</span> <span id="source-title">Reference &amp; brief</span></h2>
-          <span class="unit-tag" id="reference-count">0 / 4</span>
+          <h2 id="art-title"><span class="panel-index" aria-hidden="true">01</span> <span id="source-title">Build brief</span></h2>
           <span class="unit-tag" id="fit-tag" hidden>Nominal</span>
         </div>
         <form id="generate-form" class="panel-content">
-          <input id="art-files" type="file" accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
-          <button id="dropzone" class="dropzone" type="button" aria-describedby="reference-note">
-            <svg aria-hidden="true" width="27" height="27" viewBox="0 0 28 28" fill="none"><path d="M4 18v5h20v-5M14 18V5m-5 5 5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <strong>Drop reference art</strong>
-            <span>or browse files</span>
-          </button>
-          <p class="reference-note" id="reference-note">PNG, JPEG or WebP · up to 4 views</p>
-          <ul class="references" id="references" aria-label="Attached references" hidden></ul>
           <div class="brief-block">
             <label class="field-label" for="brief">What are we building?</label>
-            <textarea id="brief" maxlength="4000" required placeholder="Make a 42 mm badge from the central symbol, with a 4 mm backing and raised detail."></textarea>
+            <textarea id="brief" maxlength="4000" required aria-describedby="brief-help" placeholder="Make a 42 mm wheel, 8 mm thick, with a centered 6 mm hole."></textarea>
+            <p class="hint" id="brief-help">Type a description to enable Generate model.</p>
           </div>
           <button type="submit" class="button primary full" id="generate" disabled>Generate model</button>
-          <p class="hint">Generate sends the selected art and brief to Codex. Dimension edits rebuild locally.</p>
+          <div class="reference-block">
+            <input id="art-files" type="file" accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
+            <button id="dropzone" class="dropzone" type="button" aria-describedby="reference-note">
+              <svg aria-hidden="true" width="27" height="27" viewBox="0 0 28 28" fill="none"><path d="M4 18v5h20v-5M14 18V5m-5 5 5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <strong>Add reference art</strong>
+              <span>Optional · drop or browse</span>
+            </button>
+            <p class="reference-note" id="reference-note">PNG, JPEG or WebP · <span id="reference-count">0 / 4</span> views</p>
+            <ul class="references" id="references" aria-label="Attached references" hidden></ul>
+          </div>
+          <p class="hint">Generate sends your description and any reference art to Codex. Dimension edits rebuild locally.</p>
+          <button class="button full" id="return-fit" type="button" hidden>Back to assembly fit</button>
         </form>
         <div class="panel-content" id="car-fit" hidden>
           <button class="button full" id="check-fit" type="button" disabled>Check fit</button>
@@ -262,7 +273,7 @@
           <div class="empty-view" id="empty-view">
             <svg width="50" height="50" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="m24 4 17 10v20L24 44 7 34V14L24 4Z M7 14l17 10 17-10M24 24v20" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
             <strong>Preparing the example</strong>
-            <p>Drop your own art or try a ready-to-edit part.</p>
+            <p>Describe a part or try a ready-to-edit example.</p>
           </div>
         </div>
         <div class="preview-foot">

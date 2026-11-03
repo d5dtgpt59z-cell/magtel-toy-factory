@@ -26,6 +26,19 @@ _RECIPE = {
 
 
 class ArtProviderTests(unittest.TestCase):
+    def test_text_only_provider_runs_without_image_option(self):
+        def write_result(command, *, cwd, input, **kwargs):
+            self.assertNotIn("--image", command)
+            self.assertEqual(command[-2:], ["--", "-"])
+            self.assertIn('"Make a 12 mm housing"', input)
+            (cwd / "art-result.json").write_text(json.dumps(_RECIPE), encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("magtel.art_provider.shutil.which", return_value="/test/codex"), patch(
+            "magtel.art_provider.subprocess.run", side_effect=write_result,
+        ):
+            self.assertEqual(interpret_art([], "Make a 12 mm housing"), _RECIPE)
+
     def test_provider_uses_safe_attachment_names_and_validates_result(self):
         def write_result(command, *, cwd, input, **kwargs):
             self.assertEqual(command[command.index("--image") + 1:], ["reference-1.png", "--", "-"])

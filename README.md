@@ -122,10 +122,10 @@ inferred moving joints are outside this version.
 ## Work visually in MAGTEL Studio
 
 With the CAD extra installed, run `magtel studio`. The local workspace opens
-with an example you can rotate and zoom. Drop in one to four reference images,
-describe the part and give any dimensions it needs to meet, then choose
-**Generate**. Generation sends those images and the brief to your signed-in
-Codex CLI. The rest of the workspace runs locally.
+with an example you can rotate and zoom. Choose **New build**, describe the
+part and its dimensions, then click **Generate model**. You can also attach
+up to four reference images. Generation sends the brief and any attachments to
+your signed-in Codex CLI. The rest of the workspace runs locally.
 
 Click a part in the viewport to select it in the dimension inspector. Change
 its feature dimensions and choose **Rebuild model**. The geometry updates in
