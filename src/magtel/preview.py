@@ -68,13 +68,17 @@ def export_preview(spec: CarSpec | ToySpec, path: Path, *, force: bool = False) 
         "parts": parts,
         "assembly": assembly,
     }
+    write_output(path, lambda temp: temp.write_text(preview_html(data), encoding="utf-8"), force=force)
+
+
+def preview_html(data: dict[str, object]) -> str:
+    """Render the standalone viewer for validated, positioned parts."""
     # Script data uses raw-text parsing even with type="application/json".
     # Escaping the opening angle bracket prevents premature tag termination.
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     values = {
-        "%%TITLE%%": escape(spec.name),
+        "%%TITLE%%": escape(data["title"]),
         "%%DATA%%": payload.replace("<", "\\u003c"),
     }
     template = files("magtel").joinpath("viewer.html").read_text(encoding="utf-8")
-    contents = _PLACEHOLDER.sub(lambda match: values[match[0]], template)
-    write_output(path, lambda temp: temp.write_text(contents, encoding="utf-8"), force=force)
+    return _PLACEHOLDER.sub(lambda match: values[match[0]], template)

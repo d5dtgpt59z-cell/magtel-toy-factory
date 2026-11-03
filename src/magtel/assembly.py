@@ -163,8 +163,10 @@ def _on_axle(faces: list[Triangle], x: float, y: float, z: float) -> list[Triang
     return [(point(a), point(b), point(c)) for a, b, c in faces]
 
 
-def _ray_to_rect(dx: float, dz: float, center: float, end: float, half_height: float) -> tuple[float, float]:
-    x = end if dx > 0 else 0.0
+def _ray_to_rect(
+    dx: float, dz: float, center: float, start: float, end: float, half_height: float,
+) -> tuple[float, float]:
+    x = end if dx > 0 else start
     z = half_height if dz > 0 else -half_height
     to_x = (x - center) / dx if dx else math.inf
     to_z = z / dz if dz else math.inf
@@ -178,17 +180,33 @@ def _bored_chassis(length: float, width: float, height: float, wheelbase: float,
     center, end, half_height = wheelbase / 2, length / 2, height / 2
     step = math.tau / _CIRCLE_SEGMENTS
     rays = [(math.cos(index * step), math.sin(index * step)) for index in range(_CIRCLE_SEGMENTS)]
+    faces = _bored_chassis_section(
+        width, half_height, radius, center, 0.0, end, rays, open_start=True,
+    )
+
+    def mirror(p: Point) -> Point:
+        return -p[0], p[1], p[2]
+
+    return faces + [(mirror(a), mirror(c), mirror(b)) for a, b, c in faces]
+
+
+def _bored_chassis_section(
+    width: float, half_height: float, radius: float, center: float, start: float, end: float,
+    rays: list[tuple[float, float]], *, open_start: bool = False, open_end: bool = False,
+) -> list[Triangle]:
+    """Triangulate a rectangular cross-section with one bore and optional open X ends."""
+    step = math.tau / len(rays)
     inner = [(center + dx * radius, dz * radius) for dx, dz in rays]
-    outer = [_ray_to_rect(dx, dz, center, end, half_height) for dx, dz in rays]
+    outer = [_ray_to_rect(dx, dz, center, start, end, half_height) for dx, dz in rays]
     corners_between: list[list[tuple[float, tuple[float, float]]]] = [[] for _ in rays]
-    for corner in ((0.0, -half_height), (end, -half_height), (end, half_height), (0.0, half_height)):
+    for corner in ((start, -half_height), (end, -half_height), (end, half_height), (start, half_height)):
         sector = (math.atan2(corner[1], corner[0] - center) % math.tau) / step
-        nearest = round(sector) % _CIRCLE_SEGMENTS
+        nearest = round(sector) % len(rays)
         # A separate sample here could collapse onto the corner in a binary STL.
         if math.dist(corner, outer[nearest]) < 0.00025:
             outer[nearest] = corner
         else:
-            index = min(int(sector), _CIRCLE_SEGMENTS - 1)
+            index = min(int(sector), len(rays) - 1)
             corners_between[index].append((sector, corner))
 
     def near(xz: tuple[float, float]) -> Point:
@@ -198,21 +216,21 @@ def _bored_chassis(length: float, width: float, height: float, wheelbase: float,
         return p[0], width / 2, p[2]
 
     faces: list[Triangle] = []
-    for index, start in enumerate(outer):
-        end_index = (index + 1) % _CIRCLE_SEGMENTS
-        boundary = [start, *(corner for _, corner in sorted(corners_between[index])), outer[end_index]]
+    for index, outer_start in enumerate(outer):
+        end_index = (index + 1) % len(rays)
+        boundary = [outer_start, *(corner for _, corner in sorted(corners_between[index])), outer[end_index]]
         inside = near(inner[index])
         next_inside = near(inner[end_index])
         for start_xz, end_xz in zip(boundary, boundary[1:]):
             a, b = near(start_xz), near(end_xz)
             faces.extend(((inside, a, b), (far(inside), far(b), far(a))))
-            if a[0] or b[0]:  # Leave the two halves open where they share X=0.
-                faces.extend(((b, a, far(a)), (b, far(a), far(b))))
+            if open_start and a[0] == b[0] == start:
+                continue
+            if open_end and a[0] == b[0] == end:
+                continue
+            faces.extend(((b, a, far(a)), (b, far(a), far(b))))
         last = near(boundary[-1])
         faces.extend(((inside, last, next_inside), (far(inside), far(next_inside), far(last))))
         faces.extend(((inside, next_inside, far(next_inside)), (inside, far(next_inside), far(inside))))
 
-    def mirror(p: Point) -> Point:
-        return -p[0], p[1], p[2]
-
-    return faces + [(mirror(a), mirror(c), mirror(b)) for a, b, c in faces]
+    return faces

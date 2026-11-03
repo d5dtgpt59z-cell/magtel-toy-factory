@@ -1,9 +1,68 @@
 # MAGTEL Toy Factory
 
+**Imagine it. Build it. Play with it.**
+
 Tell MAGTEL what part you want or how parts should fit together, then change
 your mind in the same conversation. MAGTEL reads back the dimensions, saves an
-editable design, and exports STL files for your slicer. The CLI runs locally
-with no API key, model download, or runtime dependencies.
+editable design, and exports STL files for your slicer. The CLI and browser
+studio run locally with no API key, model download, or Python
+runtime dependencies.
+
+## Invent a toy in Dream Mode
+
+Install the package, then run `magtel dream`. Keep the terminal open while you
+use the studio. It opens a WebGL-capable browser at a private loopback address.
+Use `magtel dream --no-open` to print the address and open it yourself. The
+studio and exports work without internet access after installation.
+
+1. **Invent.** Dream Mode opens on **Slipstream**, a low-slung speedform with
+   a continuous loft, flush canopy paint, and molded turbine wheels. Try
+   “A sleek low-slung silver speedform” or one of the rover, racer, and truck
+   examples. The studio describes which details became geometry and which
+   remain concept notes. Styled body pieces regenerate as the chassis changes.
+2. **Build.** Pick a part in the viewport and drag its handles. The inspector
+   offers the same controls as numeric fields, plus colors and nominal fit.
+   Axle placement, wheel dimensions, and wheel gaps are linked across the
+   assembly. Choose a body style and edit its color groups in the inspector.
+   Invalid changes leave the last valid geometry in place.
+3. **Play.** Push the toy across a flat track, coast down a ramp, or run a
+   ramp test with a barrier. The
+   playtest shows motion, an estimated impact response, and a stability
+   estimate alongside the model.
+4. **Remix.** Try Off-Road, Racing, Monster Truck, Lunar Explorer, or Cartoon
+   Vehicle wheel profiles and palettes. Variants keep the axle positions,
+   wheel bore, mounting width, and outside diameter. Styled variants can also
+   change the body kit and carrier silhouette.
+5. **Export.** Download an invention ZIP and extract it. Open
+   `invention-sheet.html` to view the hero render, exploded view, overall and
+   part dimensions, nominal clearances, and bill of materials. Use the
+   sheet's **Print or save PDF** control to share a printable copy. The archive
+   also includes standalone PNG renders, a dimensioned top and side drawing,
+   an offline interactive preview, editable JSON, and separate STLs for the
+   rolling chassis and any body pieces.
+
+**Scope.** The offline prompt interpreter builds symmetric four- or six-wheel
+vehicle prototypes from known parts and dimensions. The studio regenerates
+triangle meshes from those parameters. Slipstream uses one lofted upper shell. The other body kits use separate solids. All use flat
+mounting surfaces. They require adhesive or retention before handling.
+Unsupported styling and mechanisms remain concept notes. The virtual test estimates longitudinal motion with
+simple geometry and assumed surface parameters. Its rolling and barrier
+responses and static stability indicator are for comparing prototypes. Physical
+testing is needed to establish impact behavior, printed fit, retention, strength,
+and child safety. STL coordinates use millimeters.
+
+Open complete v0.3 car assemblies and Dream designs using the studio's file
+picker. Saved designs from before body styles open as bare chassis. Dream
+designs use their own versioned JSON marker. The existing part
+and assembly formats still work in the CLI, including the standalone
+`preview` command. Dream files also work with `show`, `fit`, `preview`, and
+`export`. Use the browser studio to edit Dream dimensions.
+
+```sh
+magtel show design.magtel.json
+magtel preview design.magtel.json -o preview.html
+magtel export design.magtel.json -o invention.zip
+```
 
 ## Get started
 
@@ -144,13 +203,12 @@ Centimeters and inches are accepted and converted to millimeters. Block
 dimensions follow width × depth × height. Stud counts follow columns × rows.
 The studs are solid posts fused to the top of a flat-bottomed block.
 
-Version 0.3 uses a fixed vocabulary, part families, and a symmetric four-wheel
+The CLI workshop uses a fixed vocabulary, part families, and a symmetric four-wheel
 car assembly. Both axles share one design and all four wheels share one design.
 Unsupported descriptions return an error and leave the current design intact.
-The release exports
-triangulated STL and versioned MAGTEL JSON. Freeform sketches, custom joints
-between arbitrary parts, drawings, STEP export, and SOLIDWORKS file import are
-outside this release.
+The CLI exports triangulated STL and versioned MAGTEL JSON. It uses the same
+millimeter conventions as Dream Mode. Freeform sketches, arbitrary joints,
+engineering drawings, STEP export, and SOLIDWORKS import are outside its scope.
 
 ## Contributing
 
@@ -158,6 +216,8 @@ Run `python -m unittest discover -s tests -v` after installing the project. The
 language parser converts a request into validated part parameters. Geometry is
 built from those parameters, so an edit regenerates the shape. Changes to
 supported language should include examples and rejection cases.
+Run `node --test tests/test_dream_physics.cjs` with Node.js 18 or later to
+check rolling, ramp acceleration, collision, and fixed-step repeatability.
 
 MAGTEL is an independent implementation. Public SOLIDWORKS documentation on
 [extrusions and cuts](https://help.solidworks.com/2026/english/SolidWorks/sldworks/r_extrude_propertymanager.htm?format=P)
