@@ -186,7 +186,7 @@ function selectPart(id) {
   $("#part-note").textContent = {
     chassis: "Dragging the width also adjusts axle length.",
     axle: "Edits apply to all axles. Wheelbase spans the front and rear axle centers.",
-    wheel: "Edits apply to all wheels. Dragging gap or thickness also adjusts axle length.",
+    wheel: `${profileLabels[design.wheel_profile]}. Edits apply to all wheels. Dragging gap or thickness also adjusts axle length.`,
     body: "Printed separately. Secure with adhesive or a suitable retainer. Color applies to parts that share this role.",
   }[kind];
   updateControls();
