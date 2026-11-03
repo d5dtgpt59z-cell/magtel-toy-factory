@@ -6,6 +6,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from .assembly import CarSpec
+from .dream_model import DreamSpec, build as build_dream
 from .mesh import stl_bytes, write_mesh_stl
 from .model import DesignError, ToySpec
 from .project import (
@@ -23,19 +24,22 @@ _CAR_FIELDS = tuple(field.name for field in fields(CarSpec))
 _PRINT_COUNTS = {"chassis": 1, "axle": 2, "wheel": 4}
 
 
-def load_design(path: Path) -> ToySpec | CarSpec:
-    """Open an existing MAGTEL part or car assembly from its format marker."""
+def load_design(path: Path) -> ToySpec | CarSpec | DreamSpec:
+    """Open an existing MAGTEL design from its format marker."""
     data = read_json(path, label="MAGTEL design")
-    if isinstance(data, dict) and data.get("format") == FORMAT:
-        return _decode_car(data, path)
+    if isinstance(data, dict):
+        if data.get("format") == FORMAT:
+            return decode_car(data, path)
+        if data.get("format") == "magtel-dream":
+            return build_dream(data)
     return decode_part(data, path)
 
 
 def load_car(path: Path) -> CarSpec:
-    return _decode_car(read_json(path, label="MAGTEL assembly"), path)
+    return decode_car(read_json(path, label="MAGTEL assembly"), path)
 
 
-def _decode_car(data: object, path: Path) -> CarSpec:
+def decode_car(data: object, path: Path) -> CarSpec:
     if not isinstance(data, dict) or data.get("format") != FORMAT:
         raise DesignError(f"{path} is not a MAGTEL assembly. Open an editable car file.")
     if type(data.get("version")) is not int or data["version"] != VERSION:

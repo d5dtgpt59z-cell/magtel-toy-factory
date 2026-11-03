@@ -1,0 +1,121 @@
+"""Exercise the browser API and inspect the invention bundle as a downloaded file."""
+
+import io
+import json
+import struct
+import threading
+import unittest
+from http.client import HTTPConnection
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from zipfile import ZipFile
+
+from magtel.assembly_io import load_design
+from magtel.cli import main
+from magtel.dream_server import DreamServer
+
+
+class DreamWorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = DreamServer()
+        cls.worker = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.worker.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.worker.join()
+
+    def request(self, path, payload=None, *, headers=None):
+        conn = HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+        try:
+            if payload is None:
+                conn.request("GET", path, headers=headers or {})
+            else:
+                body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+                conn.request("POST", path, body,
+                             {"Content-Type": "application/json", **(headers or {})})
+            response = conn.getresponse()
+            body = response.read()
+            if response.getheader("Content-Type", "").startswith("application/json"):
+                body = json.loads(body)
+            return response.status, response.headers, body
+        finally:
+            conn.close()
+
+    def test_invent_edit_variant_export_and_reopen(self):
+        status, _, made = self.request("/api/invent", {"prompt": "Design a blue six-wheeled moon rover."})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(made["parts"]), 10)
+        design = made["design"]
+        edited_design = {**design, "length": design["length"] + 4}
+        status, _, edited = self.request("/api/design", {"design": edited_design})
+        self.assertEqual(status, 200)
+        self.assertEqual(edited["dimensions"]["length"], made["dimensions"]["length"] + 4)
+        self.assertNotEqual(edited["parts"][0]["vertices"], made["parts"][0]["vertices"])
+        status, _, _ = self.request("/api/design", {"design": {**design, "wheel_bore": 0.1}})
+        self.assertEqual(status, 400)
+
+        status, _, options = self.request("/api/variants", {"design": edited["design"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(options["variants"]), 3)
+        variant = options["variants"][0]
+        self.assertEqual(variant["wheel_bore"], design["wheel_bore"])
+        self.assertNotEqual(variant["wheel_profile"], design["wheel_profile"])
+        status, headers, body = self.request("/api/export", {"design": variant})
+        self.assertEqual(status, 200)
+        self.assertIn("attachment", headers["Content-Disposition"])
+
+        with ZipFile(io.BytesIO(body)) as archive, TemporaryDirectory() as folder:
+            self.assertEqual(set(archive.namelist()), {
+                "invention-sheet.html", "hero.png", "exploded.png", "preview.html",
+                "design.magtel.json", "stl/chassis.stl", "stl/axle.stl", "stl/wheel.stl", "START HERE.txt",
+            })
+            self.assertIsNone(archive.testzip())
+            sheet = archive.read("invention-sheet.html").decode()
+            self.assertIn("Prototype bill of materials", sheet)
+            self.assertIn('<td>6</td>', sheet)
+            self.assertIn("stl/wheel.stl", sheet)
+            self.assertNotEqual(archive.read("hero.png"), archive.read("exploded.png"))
+            for part in ("chassis", "axle", "wheel"):
+                stl = archive.read(f"stl/{part}.stl")
+                count, = struct.unpack_from("<I", stl, 80)
+                self.assertGreater(count, 0)
+                self.assertEqual(len(stl), 84 + 50 * count)
+            saved = Path(archive.extract("design.magtel.json", folder))
+            self.assertEqual(load_design(saved).design, variant)
+            preview = Path(folder) / "share.html"
+            self.assertEqual(main(["preview", str(saved), "-o", str(preview)]), 0)
+            self.assertNotIn('<script src=', preview.read_text())
+            self.assertEqual(main(["fit", str(saved)]), 0)
+
+        status, _, reopened = self.request("/api/import", {"design": variant})
+        self.assertEqual(status, 200)
+        self.assertEqual(reopened["design"], variant)
+
+    def test_accepts_legacy_complete_car(self):
+        path = Path(__file__).resolve().parents[1] / "examples" / "toy-car.magtel.json"
+        original = json.loads(path.read_text())
+        status, _, converted = self.request("/api/import", {"design": original})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(converted["parts"]), 7)
+        self.assertEqual(converted["design"]["wheelbase"], original["assembly"]["wheelbase"])
+
+    def test_loopback_boundary_and_malformed_input(self):
+        status, headers, html = self.request("/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Invent a Toy", html)
+        self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
+        for path in ("/dream.css", "/dream_stage.js", "/dream_physics.js", "/dream_ui.js"):
+            self.assertEqual(self.request(path)[0], 200)
+        self.assertEqual(self.request("/", headers={"Host": "other.example"})[0], 403)
+        self.assertEqual(self.request("/api/invent", {"prompt": "rover"},
+                                      headers={"Origin": "https://other.example"})[0], 403)
+        self.assertEqual(self.request("/api/invent", b"//")[0], 400)
+        self.assertEqual(self.request("/api/design", {"design": []})[0], 400)
+        self.assertEqual(self.request("/api/invent", {"prompt": "x" * (64 * 1024)})[0], 413)
+        self.assertEqual(self.request("/api/invent", {"prompt": "rover"},
+                                      headers={"Content-Type": "text/plain"})[0], 415)
+        self.assertEqual(self.request("/README.md")[0], 404)

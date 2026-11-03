@@ -3,6 +3,7 @@
 import argparse
 import sys
 import webbrowser
+from itertools import chain
 from pathlib import Path
 from tempfile import mkdtemp
 
@@ -10,11 +11,14 @@ from . import __version__
 from .assembly import CarSpec
 from .assembly_io import export_car, export_parts, load_design, save_car
 from .assembly_language import parse_car, starts_car
+from .dream_export import dream_preview_html, invention_bundle
+from .dream_model import DreamSpec
+from .dream_server import serve_dream
 from .language import parse
-from .mesh import write_stl
+from .mesh import write_mesh_stl, write_stl
 from .model import DesignError, ToySpec, mm
 from .preview import export_preview
-from .project import load_part, save_part, write_output
+from .project import load_part, save_part, write_json, write_output
 
 EXAMPLES = (
     "Make a wheel 40 mm across and 10 mm thick with a 6 mm axle hole.",
@@ -29,7 +33,7 @@ CAR_EXAMPLES = (
     "Put a 40 mm wheel, 10 mm thick, with a 6 mm hole on each end.",
 )
 PREVIEW_PHRASES = ("preview", "preview it", "show me the model")
-Design = ToySpec | CarSpec
+Design = ToySpec | CarSpec | DreamSpec
 SHELL_HELP = """Describe a part, assembly, or change in plain language. Try:
   {make}
   {edit}
@@ -86,6 +90,17 @@ def _design_path(text: str, *, workshop: bool = False) -> Path:
 
 def _export(spec: Design, path: Path, *, force: bool = False) -> None:
     suffix = path.suffix.lower()
+    if isinstance(spec, DreamSpec):
+        if suffix == ".zip":
+            write_output(path, lambda temp: temp.write_bytes(invention_bundle(spec)), force=force)
+            print(f"Exported the invention sheet, design, and separate STLs to {path}.")
+            return
+        if suffix == ".stl":
+            faces = list(chain.from_iterable(spec.components().values()))
+            write_output(path, lambda temp: write_mesh_stl(faces, temp), force=force)
+            print(f"Exported assembled view to {path}. Use a .zip output for separate printable parts.")
+            return
+        raise DesignError("Use .stl for the assembled prototype or .zip for the invention bundle.")
     if isinstance(spec, CarSpec):
         if suffix == ".zip":
             export_parts(spec, path, force=force)
@@ -103,7 +118,10 @@ def _export(spec: Design, path: Path, *, force: bool = False) -> None:
 
 
 def _save(spec: Design, path: Path, *, force: bool = False) -> None:
-    if isinstance(spec, CarSpec):
+    if isinstance(spec, DreamSpec):
+        write_json(spec.design, path, force=force)
+        print(f"Saved editable Dream design to {path}.")
+    elif isinstance(spec, CarSpec):
         save_car(spec, path, force=force)
         print(f"Saved editable assembly to {path}.")
     else:
@@ -114,19 +132,23 @@ def _save(spec: Design, path: Path, *, force: bool = False) -> None:
 def _preview(
     spec: Design, path: Path | None = None, *, force: bool = False, open_viewer: bool = False
 ) -> None:
-    if path is None:
+    temporary = path is None
+    if temporary:
         folder = Path(mkdtemp(prefix="magtel-preview-"))
         path = folder / "preview.html"
-        try:
-            export_preview(spec, path)
-        except (DesignError, OSError):
-            folder.rmdir()
-            raise
         open_viewer = True
-    else:
-        if path.suffix.lower() != ".html":
-            raise DesignError("Use an .html file name for the 3D preview.")
-        export_preview(spec, path, force=force)
+    elif path.suffix.lower() != ".html":
+        raise DesignError("Use an .html file name for the 3D preview.")
+    try:
+        if isinstance(spec, DreamSpec):
+            write_output(path, lambda temp: temp.write_text(dream_preview_html(spec), encoding="utf-8"),
+                         force=force)
+        else:
+            export_preview(spec, path, force=force)
+    except (DesignError, OSError):
+        if temporary:
+            folder.rmdir()
+        raise
     print(f"3D preview: {path.resolve()}")
     if open_viewer:
         try:
@@ -138,6 +160,8 @@ def _preview(
 
 
 def _parse_design(request: str, current: Design | None, *, car: bool = False) -> Design:
+    if isinstance(current, DreamSpec):
+        raise DesignError("Run magtel dream and open your design to edit its parameters.")
     if car or isinstance(current, CarSpec) or starts_car(request):
         assembly = current if isinstance(current, CarSpec) else None
         return parse_car(request, assembly, load_component=load_part)
@@ -201,7 +225,7 @@ def _workshop(start: Path | None = None, *, car: bool = False) -> int:
             elif command == "examples" and not tail:
                 _show_examples(car_only=isinstance(current, CarSpec))
             elif phrase in ("fit", "check fit", "check the fit"):
-                if not isinstance(current, CarSpec):
+                if not isinstance(current, (CarSpec, DreamSpec)):
                     raise DesignError("Build or open a car first. For two saved parts, use magtel fit WHEEL AXLE.")
                 print(current.fit_report())
             elif command == "undo" and not tail:
@@ -266,7 +290,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--force", action="store_true", help="replace an existing output file")
     show = commands.add_parser("show", help="read back a saved design")
     show.add_argument("file")
-    export = commands.add_parser("export", help="export a design to STL or a car to a zip of parts")
+    export = commands.add_parser("export", help="export STL, car parts, or a Dream invention bundle")
     export.add_argument("file")
     export.add_argument("-o", "--output", required=True, metavar="FILE", help="write a .stl or car parts .zip")
     export.add_argument("--force", action="store_true", help="replace an existing output file")
@@ -280,13 +304,16 @@ def _parser() -> argparse.ArgumentParser:
     fit.add_argument("axle", nargs="?", metavar="AXLE")
     workshop = commands.add_parser("workshop", help="start a conversation about a design")
     workshop.add_argument("file", nargs="?", help="start with an editable .magtel.json design")
+    dream = commands.add_parser("dream", help="launch the offline Dream Mode browser studio")
+    dream.add_argument("--port", type=int, default=0, help="choose a loopback port (default: automatic)")
+    dream.add_argument("--no-open", action="store_true", help="print the studio URL without opening it")
     commands.add_parser("examples", help="show example language")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"make", "assemble", "edit", "show", "export", "preview", "fit", "workshop", "examples"}
+    commands = {"make", "assemble", "edit", "show", "export", "preview", "fit", "workshop", "dream", "examples"}
     if argv and argv[0] not in commands and not argv[0].startswith("-"):
         argv.insert(0, "make")
     args = _parser().parse_args(argv)
@@ -300,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
             return _workshop(car=True)
         if args.command == "examples":
             _show_examples()
+        elif args.command == "dream":
+            serve_dream(args.port, open_browser=not args.no_open)
         elif args.command in ("make", "edit", "assemble"):
             current = load_design(_design_path(args.file)) if args.command == "edit" else None
             design = _parse_design(" ".join(args.request), current, car=args.command == "assemble")
@@ -318,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.axle:
                 return _fit(load_part(_design_path(args.design)), load_part(_design_path(args.axle)))
             design = load_design(_design_path(args.design))
-            if not isinstance(design, CarSpec):
+            if not isinstance(design, (CarSpec, DreamSpec)):
                 raise DesignError("Pass a car assembly, or pass both a wheel file and an axle file.")
             print(design.fit_report())
     except FileExistsError as error:
