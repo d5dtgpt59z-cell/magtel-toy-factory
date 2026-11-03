@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Dream Mode · MAGTEL Toy Factory</title>
+  <link rel="stylesheet" href="/dream.css">
+  <script defer src="/dream_physics.js"></script>
+  <script defer src="/dream_stage.js"></script>
+  <script defer src="/dream_ui.js"></script>
+</head>
+<body>
+  <a class="skip" href="#idea">Skip to your invention</a>
+  <header class="masthead">
+    <a class="wordmark" href="/" aria-label="MAGTEL Toy Factory home">
+      <svg viewBox="0 0 36 36" width="36" height="36" aria-hidden="true"><rect width="36" height="36" rx="8" fill="currentColor"/><path d="M8 25V12l10 7 10-7v13M18 19v6" fill="none" stroke="#19211f" stroke-width="3.5" stroke-linecap="square"/></svg>
+      <span>MAGTEL<small>TOY FACTORY</small></span>
+    </a>
+    <span class="masthead-mode"><span></span> DREAM MODE</span>
+    <span class="masthead-status">LOCAL WORKSHOP <span aria-hidden="true">/</span> 01</span>
+  </header>
+
+  <main id="main">
+    <div class="layout">
+      <section class="idea-panel" aria-labelledby="idea-title">
+        <p class="eyebrow"><span class="index">01</span> THE INVENTION DESK</p>
+        <h1 id="idea-title">Invent<br class="desktop-break"> a toy<span>.</span></h1>
+        <p class="intro">Imagine a toy vehicle. Give it wheels, a color, and a job to do.</p>
+        <form id="idea-form">
+          <label class="label" for="idea">YOUR IDEA</label>
+          <textarea id="idea" rows="4" minlength="3" maxlength="500" required placeholder="A futuristic six-wheeled moon rover in lime green"></textarea>
+          <button class="primary invent" id="invent" type="submit">
+            <span>Invent a Toy</span><span aria-hidden="true">↗</span>
+          </button>
+        </form>
+        <div class="idea-examples">
+          <p class="label">TRY AN IDEA</p>
+          <div class="chips">
+            <button class="chip" type="button" data-prompt="A futuristic six-wheeled moon rover in lime green">Moon rover</button>
+            <button class="chip" type="button" data-prompt="A pink pocket-sized race car with low-profile wheels">Pocket racer</button>
+            <button class="chip" type="button" data-prompt="A chunky orange rescue truck with wide wheels">Rescue truck</button>
+          </div>
+        </div>
+        <div class="interpretation" id="interpretation" hidden>
+          <p class="label">FROM IDEA TO GEOMETRY</p>
+          <p id="concept"></p>
+          <details id="assumptions">
+            <summary>Design assumptions</summary>
+            <ul id="notes"></ul>
+          </details>
+        </div>
+        <p class="local-note"><span aria-hidden="true">◉</span> Your ideas stay on this device.</p>
+      </section>
+
+      <section class="workspace" aria-labelledby="toy-title">
+        <div class="workspace-head">
+          <div>
+            <p class="eyebrow"><span class="index">02</span> THE WORKBENCH</p>
+            <h2 id="toy-title">Opening the workshop…</h2>
+          </div>
+          <div class="mode-switch" role="group" aria-label="Workbench mode">
+            <button type="button" id="edit-mode" aria-pressed="true">Build</button>
+            <button type="button" id="test-mode" aria-pressed="false" disabled>Playtest</button>
+          </div>
+        </div>
+        <p id="workbench-message" class="message" role="status" hidden></p>
+        <div class="bench">
+          <div class="viewport">
+            <div class="canvas-wrap">
+              <canvas id="workbench-canvas" aria-label="Interactive 3D toy assembly. Drag empty space to orbit. Use the part selector and dimension inputs to edit with the keyboard."></canvas>
+              <div class="view-heading" aria-hidden="true"><span class="view-dot"></span><span id="view-caption">ASSEMBLY VIEW</span></div>
+              <div class="view-corner" aria-hidden="true">FIG. 01</div>
+              <div class="view-hint" id="view-hint" aria-hidden="true">Drag to orbit · click a part to edit</div>
+              <div class="camera-controls" role="group" aria-label="Camera controls">
+                <button type="button" data-camera="left" aria-label="Orbit left">←</button>
+                <button type="button" data-camera="right" aria-label="Orbit right">→</button>
+                <button type="button" data-camera="near" aria-label="Zoom in">+</button>
+                <button type="button" data-camera="far" aria-label="Zoom out">−</button>
+                <button type="button" data-camera="reset" aria-label="Reset camera">↺</button>
+              </div>
+            </div>
+            <div class="view-bar">
+              <label class="explode" for="explode">Explode <input type="range" id="explode" min="0" max="100" value="0" disabled></label>
+              <span id="envelope">Dimensions in mm</span>
+            </div>
+          </div>
+
+          <div class="inspector" id="build-panel">
+            <div class="inspector-head">
+              <span class="label">PART INSPECTOR</span><span class="index" id="part-count">00</span>
+            </div>
+            <div class="inspector-body">
+              <label class="sr-only" for="part-select">Select a part</label>
+              <select id="part-select" disabled><option>Loading assembly…</option></select>
+              <form id="part-form">
+                <div id="part-fields" class="part-fields"></div>
+                <p class="field-note" id="part-note"></p>
+                <div class="part-footer">
+                  <label class="color-control" for="part-color"><input id="part-color" type="color" value="#ed6a35" disabled> Color</label>
+                  <button class="small-button" id="apply" type="submit" disabled>Apply edits</button>
+                </div>
+              </form>
+              <details class="fit" id="fit-panel" hidden>
+                <summary>Nominal fit <span id="fit-status">PASS</span></summary>
+                <dl id="fit-list"></dl>
+              </details>
+            </div>
+          </div>
+
+          <div class="inspector" id="test-panel" hidden>
+            <div class="inspector-head"><span class="label">PLAYTEST TRACK</span><span class="index">SIM</span></div>
+            <div class="inspector-body">
+              <label class="label" for="track">SCENARIO</label>
+              <select id="track">
+                <option value="floor">Flat push</option>
+                <option value="ramp">Ramp coast</option>
+                <option value="barrier" selected>Ramp + barrier</option>
+              </select>
+              <div class="test-controls">
+                <button class="small-button accent" id="run-test" type="button">Run test</button>
+                <button class="small-button" id="reset-test" type="button">Reset</button>
+              </div>
+              <dl class="telemetry" id="telemetry">
+                <div><dt>Speed</dt><dd id="speed">0 mm/s</dd></div>
+                <div><dt>Travel</dt><dd id="distance">0 mm</dd></div>
+                <div><dt>Impacts</dt><dd id="collisions">0</dd></div>
+                <div><dt>Stability</dt><dd id="stability">—</dd></div>
+              </dl>
+              <p class="field-note">Estimated rigid-body motion. Use the track to compare design changes.</p>
+              <p id="test-result" class="sr-only" role="status"></p>
+              <details class="simulation-limits">
+                <summary>Simulation assumptions</summary>
+                <p id="test-limits"></p>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="variants" aria-labelledby="variants-title">
+        <div class="module-head">
+          <div>
+            <p class="eyebrow"><span class="index">03</span> SWAP LAB</p>
+            <h2 id="variants-title">Generate variants</h2>
+            <p>Try different wheel shapes and palettes that share the same axle and bore dimensions.</p>
+          </div>
+          <button class="small-button" type="button" id="variants-button" disabled>Generate <span aria-hidden="true">⤨</span></button>
+        </div>
+        <div id="variant-list" class="variant-list"></div>
+      </section>
+
+      <section class="exports" aria-labelledby="exports-title">
+        <div class="module-head">
+          <div>
+            <p class="eyebrow"><span class="index">04</span> THE HANDOFF</p>
+            <h2 id="exports-title">Invention sheet</h2>
+            <p>Printable invention sheet with dimensions and a parts list, hero and exploded SVGs, separate STLs, design JSON, and an offline 3D preview.</p>
+          </div>
+          <button class="small-button accent" type="button" id="export" disabled>Download ZIP <span aria-hidden="true">↓</span></button>
+        </div>
+        <div class="file-actions">
+          <button class="text-button" id="save" type="button" disabled>Save design JSON</button>
+          <button class="text-button" id="open" type="button">Open design JSON</button>
+          <input id="file" type="file" accept=".json,application/json" hidden>
+        </div>
+      </section>
+    </div>
+
+    <footer><span>MAGTEL / DREAM MODE</span><span>Vehicle prototypes · Dimensions in millimeters</span></footer>
+  </main>
+</body>
+</html>
