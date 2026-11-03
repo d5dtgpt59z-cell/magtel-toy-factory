@@ -2,13 +2,16 @@
 (() => {
   "use strict";
 
-  const initialYaw = 1.02;
-  const initialPitch = 0.54;
+  const initialYaw = 1.07;
+  const initialPitch = 0.49;
   const noShift = [0, 0, 0];
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const add = (a, b) => a.map((v, i) => v + b[i]);
   const subtract = (a, b) => a.map((v, i) => v - b[i]);
   const scale = (a, s) => a.map(v => v * s);
+  const cross = (a, b) => [
+    a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0],
+  ];
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
   function rgb(color) {
@@ -29,19 +32,38 @@
     return {low, high, center: scale(add(low, high), 0.5)};
   }
 
-  function normals(v) {
-    const result = new Float32Array(v.length);
-    for (let i = 0; i < v.length; i += 9) {
-      const ax = v[i + 3] - v[i], ay = v[i + 4] - v[i + 1], az = v[i + 5] - v[i + 2];
-      const bx = v[i + 6] - v[i], by = v[i + 7] - v[i + 1], bz = v[i + 8] - v[i + 2];
-      const x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx;
-      const size = Math.hypot(x, y, z) || 1;
-      for (let j = i; j < i + 9; j += 3) {
-        result[j] = x / size;
-        result[j + 1] = y / size;
-        result[j + 2] = z / size;
+  function normals(vertices, creaseCos) {
+    const result = new Float32Array(vertices.length);
+    const shared = new Map(), corners = [];
+    for (let i = 0; i < vertices.length; i += 9) {
+      const points = [0, 3, 6].map(offset => vertices.slice(i + offset, i + offset + 3));
+      const face = cross(subtract(points[1], points[0]), subtract(points[2], points[0]));
+      const normal = scale(face, 1 / (Math.hypot(...face) || 1));
+      for (let j = 0; j < 3; j++) {
+        result.set(normal, i + j * 3);
+        if (creaseCos === null) continue;
+        const point = points[j];
+        const key = point.join(",");
+        const adjacent = shared.get(key) || [];
+        if (!shared.has(key)) shared.set(key, adjacent);
+        const a = subtract(points[(j + 1) % 3], point);
+        const b = subtract(points[(j + 2) % 3], point);
+        const angle = Math.atan2(Math.hypot(...cross(a, b)), dot(a, b));
+        corners.push({normal, adjacent});
+        adjacent.push({normal, angle});
       }
     }
+    // Angle weighting avoids favoring the side of a quad split into two
+    // triangles. A crease threshold keeps actual seams and bore rims sharp.
+    corners.forEach(({normal, adjacent}, index) => {
+      const blend = [0, 0, 0];
+      for (const face of adjacent) {
+        if (dot(face.normal, normal) < creaseCos) continue;
+        for (let i = 0; i < 3; i++) blend[i] += face.normal[i] * face.angle;
+      }
+      const magnitude = Math.hypot(...blend);
+      if (magnitude) result.set(scale(blend, 1 / magnitude), index * 3);
+    });
     return result;
   }
 
@@ -60,9 +82,11 @@
       attribute vec3 aPosition, aNormal;
       uniform vec3 uOffset, uTarget, uRight, uUp;
       uniform mediump vec3 uToward;
+      uniform vec4 uShadow;
       uniform vec2 uScale, uPitch, uSpin, uHub;
       uniform float uDepth, uRadius;
       varying mediump vec3 vNormal;
+      varying mediump vec2 vShadow;
       vec2 rotate(vec2 p, vec2 cs) {
         return vec2(p.x * cs.x - p.y * cs.y, p.x * cs.y + p.y * cs.x);
       }
@@ -73,7 +97,9 @@
         n.xz = rotate(n.xz, uSpin);
         p.xz = rotate(p.xz - vec2(0.0, uRadius), uPitch) + vec2(0.0, uRadius);
         n.xz = rotate(n.xz, uPitch);
-        p += uOffset - uTarget;
+        p += uOffset;
+        vShadow = (p.xy - uShadow.xy) / uShadow.zw;
+        p -= uTarget;
         gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
           -dot(p, uToward) / uDepth, 1.0);
         vNormal = n;
@@ -81,23 +107,34 @@
     const fragment = shader(gl, gl.FRAGMENT_SHADER, `
       precision mediump float;
       varying mediump vec3 vNormal;
+      varying mediump vec2 vShadow;
       uniform vec4 uColor;
       uniform vec3 uToward;
-      uniform bool uLit;
-      uniform float uSelected;
+      uniform bool uLit, uSoft;
+      uniform float uSelected, uFinish;
       void main() {
         vec3 color = uColor.rgb;
+        float alpha = uColor.a;
         if (uLit) {
           vec3 n = normalize(vNormal);
-          vec3 key = normalize(vec3(0.28, 0.48, 1.0));
+          vec3 key = normalize(vec3(0.24, 0.32, 0.92));
+          vec3 fill = normalize(vec3(0.4, -0.8, 0.32));
+          vec3 rim = normalize(vec3(-0.65, -0.37, 0.72));
           float diffuse = max(dot(n, key), 0.0);
           float facing = max(dot(n, uToward), 0.0);
-          vec3 halfVector = normalize(key + uToward);
-          float highlight = pow(max(dot(n, halfVector), 0.0), 24.0);
-          color = color * (0.55 + diffuse * 0.37 + facing * 0.08) + highlight * 0.11;
-          color = mix(color, vec3(1.0, 0.69, 0.28), uSelected * (0.16 + 0.17 * (1.0 - facing)));
+          float specular = pow(max(dot(n, normalize(key + uToward)), 0.0), 16.0 + 28.0 * uFinish);
+          float rimLight = max(dot(n, rim), 0.0) * pow(1.0 - facing, 2.0);
+          float lighting = 0.47 + 0.34 * diffuse + 0.15 * max(dot(n, fill), 0.0) + 0.06 * n.z;
+          color = color * lighting
+            + (0.045 + 0.24 * uFinish) * specular * vec3(1.0, 0.96, 0.9)
+            + (0.045 + 0.12 * uFinish) * rimLight * vec3(0.8, 0.91, 1.0);
+          color = mix(color, vec3(1.0, 0.7, 0.33), uSelected * (0.13 + 0.12 * (1.0 - facing)));
         }
-        gl_FragColor = vec4(color, uColor.a);
+        if (uSoft) {
+          float fade = max(0.0, 1.0 - dot(vShadow, vShadow));
+          alpha *= fade * fade;
+        }
+        gl_FragColor = vec4(color, alpha);
       }`);
     const program = gl.createProgram();
     gl.attachShader(program, vertex);
@@ -116,7 +153,7 @@
     const normal = gl.getAttribLocation(program, "aNormal");
     const u = Object.fromEntries(
       ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit",
-        "Pitch", "Spin", "Hub", "Radius", "Selected"]
+        "Pitch", "Spin", "Hub", "Radius", "Selected", "Finish", "Soft", "Shadow"]
         .map(name => [name, gl.getUniformLocation(program, "u" + name)])
     );
 
@@ -134,8 +171,8 @@
     }
 
     return {
-      mesh(vertices, {lit = true, mode = gl.TRIANGLES} = {}) {
-        return {position: buffer(vertices), normal: lit ? buffer(normals(vertices)) : null,
+      mesh(vertices, {lit = true, mode = gl.TRIANGLES, creaseCos = null} = {}) {
+        return {position: buffer(vertices), normal: lit ? buffer(normals(vertices, creaseCos)) : null,
           count: vertices.length / 3, mode};
       },
       free(mesh) {
@@ -155,7 +192,7 @@
         gl.uniform1f(u.Depth, view.depth);
       },
       draw(mesh, color, {offset = noShift, pitch = 0, spin = 0,
-        hub = [0, 0], radius = 0, selected = false, alpha = 1} = {}) {
+        hub = [0, 0], radius = 0, selected = false, alpha = 1, finish = 0.45, shadow = null} = {}) {
         attribute(position, mesh.position);
         if (mesh.normal) attribute(normal, mesh.normal);
         else gl.disableVertexAttribArray(normal);
@@ -167,7 +204,12 @@
         gl.uniform1f(u.Radius, radius);
         gl.uniform1i(u.Lit, Boolean(mesh.normal));
         gl.uniform1f(u.Selected, selected ? 1 : 0);
+        gl.uniform1f(u.Finish, finish);
+        gl.uniform1i(u.Soft, shadow !== null);
+        gl.uniform4fv(u.Shadow, shadow || [0, 0, 1, 1]);
+        gl.depthMask(shadow === null);
         gl.drawArrays(mesh.mode, 0, mesh.count);
+        gl.depthMask(true);
       },
     };
   }
@@ -238,18 +280,11 @@
     };
   }
 
-  function contactShadow(partBounds, z) {
+  function shadowMesh(renderer, x, y, z, rx, ry, alpha) {
     const vertices = [];
-    const center = [...partBounds.center];
-    center[2] = z;
-    const sizes = subtract(partBounds.high, partBounds.low);
-    const rx = sizes[0] * 0.58, ry = sizes[1] * 0.54;
-    const point = i => {
-      const angle = i * Math.PI / 24;
-      return [center[0] + rx * Math.cos(angle), center[1] + ry * Math.sin(angle), z];
-    };
-    for (let i = 0; i < 48; i++) vertices.push(...center, ...point(i), ...point(i + 1));
-    return vertices;
+    addQuad(vertices, [x - rx, y - ry, z], [x + rx, y - ry, z],
+      [x + rx, y + ry, z], [x - rx, y + ry, z]);
+    return {mesh: renderer.mesh(vertices, {lit: false}), alpha, shadow: [x, y, rx, ry]};
   }
 
   function wheelMark(part, radius) {
@@ -277,6 +312,7 @@
       {field: "width", label: "Width", point: [center[0], high[1], high[2]], axis: [0, 1, 0], factor: 2},
       {field: "height", label: "Height", point: [center[0], center[1], high[2]], axis: [0, 0, 1], factor: 2},
     ];
+    if (!part.id.endsWith("-axle")) return [];
     const axleSign = part.id.startsWith("rear") ? -1 : 1;
     const controls = [
       {field: "axle_length", label: "Axle length", point: [center[0], high[1], center[2]], axis: [0, 1, 0], factor: 2},
@@ -295,6 +331,7 @@
       this.onEdit = onEdit;
       this.onUnavailable = onUnavailable;
       this.parts = [];
+      this.shadows = [];
       this.exploded = 0;
       this.pending = false;
       this.selected = null;
@@ -343,13 +380,17 @@
         this.renderer.free(part.mark);
       }
       this.renderer.free(this.grid);
-      this.renderer.free(this.shadow);
+      for (const item of this.shadows) this.renderer.free(item.mesh);
 
       this.parts = parts.map(part => {
+        const wheel = part.id.endsWith("-wheel");
+        const axle = part.id.endsWith("-axle");
+        const body = part.kind === "body" || part.id.startsWith("body-");
+        const creaseCos = body ? 0.85 : wheel || axle ? 0.9 : null;
+        const finish = wheel ? 0.19 : axle ? 0.8 : body ? 0.56 : 0.37;
         const item = {...part, explode: part.explode || noShift, color: rgb(part.color),
-          mesh: this.renderer.mesh(part.vertices), bounds: bounds(part.vertices)};
-        if (part.id.endsWith("-wheel")) item.mark = this.renderer.mesh(
-          wheelMark(item, design.wheel_diameter / 2), {lit: false});
+          mesh: this.renderer.mesh(part.vertices, {creaseCos}), bounds: bounds(part.vertices), finish};
+        if (wheel) item.mark = this.renderer.mesh(wheelMark(item, design.wheel_diameter / 2), {lit: false});
         return item;
       });
       const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
@@ -360,11 +401,21 @@
         }
       }
       const center = scale(add(low, high), 0.5);
-      this.radius = Math.hypot(...subtract(high, center));
+      const size = subtract(high, low);
+      this.radius = Math.hypot(...size) / 2;
       const ground = low[2] - this.radius * 0.006;
       this.grid = this.renderer.mesh(grid(this.radius * 2.4, ground, center), {lit: false, mode: this.gl.LINES});
-      this.shadow = this.renderer.mesh(contactShadow({low, high, center}, ground + this.radius * 0.002),
-        {lit: false});
+      const z = ground + this.radius * 0.002;
+      this.shadows = [
+        shadowMesh(this.renderer, center[0] - size[0] * 0.05, center[1] - size[1] * 0.08,
+          z, size[0] * 0.65, size[1] * 0.69, 0.24),
+      ];
+      for (const part of this.parts) {
+        if (!part.mark) continue;
+        const [x, y] = part.bounds.center;
+        const [width, thickness] = subtract(part.bounds.high, part.bounds.low);
+        this.shadows.push(shadowMesh(this.renderer, x, y, z, width * 0.21, thickness * 0.75, 0.35));
+      }
       if (!this.parts.some(part => part.id === this.selected)) this.selected = null;
       this.updateHandles();
       this.schedule();
@@ -478,11 +529,14 @@
         this.renderer.draw(this.track.lines, [0.79, 0.92, 0.81], {alpha: 0.82});
         if (this.track.barrier) this.renderer.draw(this.track.barrier, [0.99, 0.44, 0.19]);
       } else {
-        this.renderer.draw(this.grid, [0.19, 0.40, 0.37], {alpha: 0.17});
-        this.renderer.draw(this.shadow, [0.22, 0.37, 0.32], {alpha: 0.12 * (1 - exploded * 0.7)});
+        this.renderer.draw(this.grid, [0.19, 0.40, 0.37], {alpha: 0.09});
+        for (const {mesh, shadow, alpha} of this.shadows) {
+          this.renderer.draw(mesh, [0.13, 0.23, 0.21], {shadow, alpha: alpha * (1 - exploded * 0.85)});
+        }
       }
       for (const part of this.parts) {
-        const params = {offset: scale(part.explode, exploded), selected: !playtest && this.selected === part.id};
+        const params = {offset: scale(part.explode, exploded), finish: part.finish,
+          selected: !playtest && this.selected === part.id};
         if (playtest) {
           const {x, z, pitch, rotation} = playtest.sample;
           const radius = this.design.wheel_diameter / 2;
