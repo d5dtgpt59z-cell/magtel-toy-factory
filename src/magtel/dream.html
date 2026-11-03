@@ -94,16 +94,26 @@
             <div class="inspector-body">
               <label class="sr-only" for="part-select">Select a part</label>
               <select id="part-select" disabled><option>Loading assembly…</option></select>
+              <label class="body-style" for="body-style">
+                <span>Body style</span>
+                <select id="body-style" disabled>
+                  <option value="plain">Bare chassis</option>
+                  <option value="lunar">Lunar rover</option>
+                  <option value="racer">Pocket racer</option>
+                  <option value="truck">Rescue truck</option>
+                </select>
+              </label>
               <form id="part-form">
                 <div id="part-fields" class="part-fields"></div>
+                <dl id="part-dimensions" class="part-dimensions" aria-label="Body part dimensions" hidden></dl>
                 <p class="field-note" id="part-note"></p>
                 <div class="part-footer">
-                  <label class="color-control" for="part-color"><input id="part-color" type="color" value="#ed6a35" disabled> Color</label>
+                  <label class="color-control" for="part-color"><input id="part-color" type="color" value="#ed6a35" disabled> <span id="part-color-label">Color</span></label>
                   <button class="small-button" id="apply" type="submit" disabled>Apply edits</button>
                 </div>
               </form>
               <details class="fit" id="fit-panel" hidden>
-                <summary>Nominal fit <span id="fit-status">PASS</span></summary>
+                <summary>Nominal rolling fit <span id="fit-status">PASS</span></summary>
                 <dl id="fit-list"></dl>
               </details>
             </div>

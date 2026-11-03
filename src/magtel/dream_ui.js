@@ -71,7 +71,7 @@ async function request(endpoint, payload) {
 
 function updateControls() {
   const modelReady = Boolean(current.model);
-  for (const id of ["part-select", "apply", "part-color", "variants-button", "export", "save", "test-mode"]) {
+  for (const id of ["part-select", "body-style", "apply", "part-color", "variants-button", "export", "save", "test-mode"]) {
     $(`#${id}`).disabled = !modelReady || current.busy;
   }
   for (const item of document.querySelectorAll(".part-fields input, .variant-card, .chip")) {
@@ -128,7 +128,9 @@ try {
   $("#view-hint").textContent = stageWarning;
 }
 
-function partKind(id) {
+function partKind(part) {
+  if (part.kind === "body") return "body";
+  const {id} = part;
   return id === "chassis" ? "chassis" : id.endsWith("-axle") ? "axle" : "wheel";
 }
 
@@ -137,9 +139,13 @@ function selectPart(id) {
   $("#part-select").value = id;
   stage?.select(id);
   const design = current.model.design;
-  const kind = partKind(id);
-  if (current.mode === "build" && !stageWarning) $("#view-hint").textContent = "Drag a dimension handle to edit";
-  $("#part-fields").replaceChildren(...fields[kind].map(([key, caption]) => {
+  const part = current.model.parts.find((item) => item.id === id);
+  const kind = partKind(part);
+  const bodyPart = kind === "body";
+  if (current.mode === "build" && !stageWarning) {
+    $("#view-hint").textContent = bodyPart ? "Drag to orbit · change body style in the inspector" : "Drag a dimension handle to edit";
+  }
+  $("#part-fields").replaceChildren(...(fields[kind] ?? []).map(([key, caption]) => {
     const label = document.createElement("label");
     label.className = "field";
     const text = document.createElement("span");
@@ -156,22 +162,31 @@ function selectPart(id) {
     label.append(text, input);
     return label;
   }));
-  $("#part-color").value = design.colors[kind];
+  const dimensions = $("#part-dimensions");
+  dimensions.hidden = !bodyPart;
+  dimensions.replaceChildren(...(bodyPart ? dimensionRows(part.dimensions, {
+    length: "Length", width: "Width", height: "Height",
+  }) : []));
+  $("#part-color").value = bodyPart ? design.body_colors[part.role] : design.colors[kind];
+  $("#part-color-label").textContent = bodyPart
+    ? {shell: "Shell color", accent: "Accent color", equipment: "Equipment color"}[part.role]
+    : "Color";
   $("#part-note").textContent = {
     chassis: "Dragging the width also adjusts axle length.",
     axle: "Edits apply to all axles. Wheelbase spans the front and rear axle centers.",
     wheel: "Edits apply to all wheels. Dragging gap or thickness also adjusts axle length.",
+    body: "Printed separately. Secure with adhesive or a suitable retainer. Color applies to parts that share this role.",
   }[kind];
   updateControls();
 }
 
-function fitDetails(fit) {
-  return Object.entries(fitLabels).map(([key, title]) => {
+function dimensionRows(values, labels) {
+  return Object.entries(labels).map(([key, title]) => {
     const row = document.createElement("div");
     const name = document.createElement("dt");
     const value = document.createElement("dd");
     name.textContent = title;
-    value.textContent = mm(fit[key]);
+    value.textContent = mm(values[key]);
     row.append(name, value);
     return row;
   });
@@ -199,7 +214,8 @@ function install(model, {fresh = false, variant = null} = {}) {
   $("#interpretation").hidden = false;
   $("#part-count").textContent = String(parts.length).padStart(2, "0");
   $("#part-select").replaceChildren(...parts.map((part) => new Option(part.name, part.id)));
-  $("#fit-list").replaceChildren(...fitDetails(fit));
+  $("#body-style").value = design.body_style ?? "plain";
+  $("#fit-list").replaceChildren(...dimensionRows(fit, fitLabels));
   $("#fit-panel").hidden = false;
   $("#envelope").textContent = [
     dimensions.length, dimensions.width, dimensions.height,
@@ -348,11 +364,26 @@ for (const button of document.querySelectorAll("[data-prompt]")) {
 }
 
 $("#part-select").addEventListener("change", (event) => selectPart(event.target.value));
+$("#body-style").addEventListener("change", (event) => {
+  const choice = event.target;
+  const design = {...current.model.design, body_style: choice.value};
+  choice.value = current.model.design.body_style ?? "plain";
+  perform(async () => {
+    install(await request("design", {design}));
+    message("Body style updated.");
+  }, "Building the selected body modules…");
+});
 $("#part-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const design = {...current.model.design};
   for (const input of $("#part-fields").querySelectorAll("input")) design[input.name] = input.valueAsNumber;
-  design.colors = {...design.colors, [partKind(current.part)]: $("#part-color").value};
+  const part = current.model.parts.find((item) => item.id === current.part);
+  const color = $("#part-color").value;
+  if (partKind(part) === "body") {
+    design.body_colors = {...design.body_colors, [part.role]: color};
+  } else {
+    design.colors = {...design.colors, [partKind(part)]: color};
+  }
   perform(async () => {
     install(await request("design", {design}));
     message("Part edits applied.");

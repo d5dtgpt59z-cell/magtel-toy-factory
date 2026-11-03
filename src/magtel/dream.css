@@ -214,7 +214,13 @@ input[type="range"] { width: clamp(48px, 7vw, 125px); accent-color: #276449; }
 .inspector-body { padding: 12px; }
 .inspector-body > .label { display: block; margin-bottom: 5px; }
 select { width: 100%; min-height: 34px; padding: 6px 7px; font-size: 13px; font-weight: 750; }
+.body-style { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 9px; font-size: 12px; }
+.body-style select { min-height: 30px; }
+.part-dimensions { display: grid; gap: 5px; margin-top: 11px; font-size: 12px; }
+.part-dimensions > div { display: flex; justify-content: space-between; gap: 8px; }
+.part-dimensions dd { font: 700 11px/1.4 var(--mono); text-align: right; }
 .part-fields { display: grid; gap: 8px; margin-top: 11px; }
+.part-fields:empty { margin-top: 0; }
 .field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 74px;
