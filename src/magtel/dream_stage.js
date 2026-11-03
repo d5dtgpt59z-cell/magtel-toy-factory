@@ -307,11 +307,18 @@
       {field: "wheel_diameter", label: "Ø Wheel", point: [center[0], side, high[2]], axis: [0, 0, 1], factor: 1},
       {field: "wheel_gap", label: "Gap", point: [center[0], side, center[2]], axis: [0, sign, 0], factor: 1},
     ];
-    if (part.id === "chassis") return [
-      {field: "length", label: "Length", point: [high[0], center[1], high[2]], axis: [1, 0, 0], factor: 2},
-      {field: "width", label: "Width", point: [center[0], high[1], high[2]], axis: [0, 1, 0], factor: 2},
-      {field: "height", label: "Height", point: [center[0], center[1], high[2]], axis: [0, 0, 1], factor: 2},
-    ];
+    if (part.id === "chassis") {
+      // Keep chassis labels at the exposed rail when a separate body covers its top.
+      const dressed = design.body_style && design.body_style !== "plain";
+      const quarter = (high[0] - low[0]) * 0.26;
+      return [
+        {field: "length", label: "Length", point: [high[0], center[1], high[2]], axis: [1, 0, 0], factor: 2},
+        {field: "width", label: "Width", point: [center[0] - (dressed ? quarter : 0), high[1], high[2]],
+          axis: [0, 1, 0], factor: 2},
+        {field: "height", label: "Height", point: dressed ? [center[0] + quarter, high[1], high[2]]
+          : [center[0], center[1], high[2]], axis: [0, 0, 1], factor: 2},
+      ];
+    }
     if (!part.id.endsWith("-axle")) return [];
     const axleSign = part.id.startsWith("rear") ? -1 : 1;
     const controls = [
