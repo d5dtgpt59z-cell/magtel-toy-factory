@@ -5,6 +5,8 @@ const viewer = byId("viewer");
 const dimensions = byId("dimensions");
 const partPicker = byId("part-picker");
 const featurePicker = byId("feature-picker");
+const finishPicker = byId("finish-picker");
+const partColor = byId("part-color");
 const undoButton = byId("undo");
 const redoButton = byId("redo");
 const discardButton = byId("discard-edits");
@@ -64,6 +66,7 @@ function refreshControls() {
   byId("new-build").disabled = working;
   byId("return-fit").disabled = working;
   byId("load-car").disabled = working;
+  byId("load-gripper").disabled = working;
   byId("load-demo").disabled = working;
   byId("open-project").disabled = working;
   byId("save-project").disabled = !canExport;
@@ -80,6 +83,7 @@ function refreshControls() {
   const activity = {
     demo: "Loading example",
     car: "Loading toy car",
+    gripper: "Loading robot gripper",
     generate: "Generating",
     rebuild: "Rebuilding",
     undo: "Undoing",
@@ -274,7 +278,7 @@ function numberField(label, value, onEdit, positive = false) {
 }
 
 function numberRow(values, labels, positive = false) {
-  const row = node("div", undefined, "number-row" + (labels.length === 2 ? " two" : ""));
+  const row = node("div", undefined, "number-row" + ([2, 4].includes(labels.length) ? " two" : ""));
   for (const [index, label] of labels.entries()) {
     row.append(numberField(label, values[index], value => { values[index] = value; }, positive));
   }
@@ -298,9 +302,14 @@ function pointsEditor(points) {
   return list;
 }
 
-const kinds = {box: "Box", cylinder: "Cylinder", extrude: "Extrusion", loft: "Loft"};
+const kinds = {
+  box: "Box", rounded_box: "Rounded box", chamfer_box: "Beveled box",
+  cylinder: "Cylinder", extrude: "Extrusion", loft: "Loft",
+};
 const sizeLabels = {
   box: ["Width X", "Depth Y", "Height Z"],
+  rounded_box: ["Width X", "Depth Y", "Height Z", "Edge radius"],
+  chamfer_box: ["Width X", "Depth Y", "Height Z", "Bevel"],
   cylinder: ["Radius", "Height"],
   extrude: ["Height"],
 };
@@ -422,6 +431,8 @@ function renderPart(featureIndex = 0, keepOpen = false) {
     return;
   }
   const part = draft.parts[index];
+  finishPicker.value = part.finish ?? "polymer";
+  partColor.value = part.color;
   featurePicker.replaceChildren();
   for (const [index, feature] of part.features.entries()) {
     addOption(featurePicker, index,
@@ -440,6 +451,20 @@ partPicker.addEventListener("change", () => {
   sendSelectedPart();
 });
 featurePicker.addEventListener("change", () => renderFeature());
+finishPicker.addEventListener("change", () => {
+  const index = Number(partPicker.value);
+  const part = draft.parts[index];
+  if (finishPicker.value === "polymer" && currentRecipe.parts[index].finish === undefined) {
+    delete part.finish;
+  } else {
+    part.finish = finishPicker.value;
+  }
+  markEdit();
+});
+partColor.addEventListener("input", () => {
+  draft.parts[Number(partPicker.value)].color = partColor.value;
+  markEdit();
+});
 
 function renderSource() {
   const showFit = isCar() && !composing;
@@ -473,6 +498,7 @@ function applyModel(payload, preserve = false) {
     ? "Select a part in the viewport, test its fit, and download it for printing."
     : "Describe a part, then refine the geometry in place. Reference art is optional.";
   renderSource();
+  byId("surface-fields").hidden = car;
   byId("feature-selection").hidden = car;
   byId("car-settings").hidden = !car;
   byId("save-step").hidden = car;
@@ -565,6 +591,12 @@ byId("return-fit").addEventListener("click", () => {
   byId("check-fit").focus();
 });
 byId("load-demo").addEventListener("click", loadDemo);
+byId("load-gripper").addEventListener("click", () => {
+  run("gripper", "art-status", "Loading the robot gripper…", async () => {
+    applyModel(await request("api/gripper"));
+    setStatus("art-status", "Gripper ready. Select a part to inspect its finish and dimensions.");
+  });
+});
 byId("load-car").addEventListener("click", () => {
   run("car", "art-status", "Loading the toy car…", async () => {
     applyModel(await request("api/car"));

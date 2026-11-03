@@ -4,6 +4,7 @@ from math import pi
 import unittest
 
 from magtel.art_geometry import ART_SCHEMA, build_art, validate_art
+from magtel.art_io import art_preview_data
 from magtel.model import DesignError
 
 
@@ -81,6 +82,18 @@ class RecipeValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(DesignError, "1 to 24"):
             validate_art(recipe(*(part(str(i), feature()) for i in range(25))))
 
+    def test_finishes_are_optional_for_saved_recipes_and_edge_sizes_are_bounded(self):
+        legacy = recipe(part("Base", feature()))
+        self.assertEqual(validate_art(legacy), legacy)
+        finished = recipe({**part("Base", feature()), "finish": "metal"})
+        self.assertEqual(validate_art(finished), finished)
+        finished["parts"][0]["finish"] = "unknown"
+        with self.assertRaisesRegex(DesignError, r"\.finish must be one of"):
+            validate_art(finished)
+        for kind in ("rounded_box", "chamfer_box"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(DesignError, "half the shortest side"):
+                validate_art(recipe(part("Base", feature(kind, size=[20, 16, 8, 4]))))
+
 
 @unittest.skipUnless(find_spec("build123d"), "optional CAD dependencies are unavailable")
 class GeometryTests(unittest.TestCase):
@@ -117,3 +130,29 @@ class GeometryTests(unittest.TestCase):
         with self.assertRaisesRegex(DesignError, "cut does not intersect"):
             build_art(recipe(part("Base", feature(), feature(
                 "cylinder", operation="cut", position=[100, 0, 0], size=[2, 10]))))
+
+    def test_edge_boxes_remove_material_without_reducing_outer_dimensions(self):
+        model = build_art(recipe(
+            part("Rounded housing", feature("rounded_box", size=[20, 16, 8, 1.5])),
+            part("Beveled housing", feature("chamfer_box", position=[40, 0, 0], size=[20, 16, 8, 1.5])),
+        ))
+        self.assertEqual(len(model.solids()), 2)
+        for solid in model.children:
+            self.assertTrue(solid.is_valid)
+            self.assertLess(solid.volume, 20 * 16 * 8)
+            for dimension, expected in zip(solid.bounding_box().size, (20, 16, 8)):
+                self.assertAlmostEqual(dimension, expected)
+        self.assertNotAlmostEqual(model.children[0].volume, model.children[1].volume)
+
+    def test_preview_keeps_finish_and_falls_back_under_triangle_budget(self):
+        data = recipe({**part("Pin", feature("cylinder", size=[12, 8])), "finish": "metal"})
+        model = build_art(data)
+        detailed, measures = art_preview_data(data, model)
+        coarse, coarse_measures = art_preview_data(data, model, triangle_limit=600)
+        self.assertEqual(detailed["parts"][0]["finish"], "metal")
+        self.assertEqual(coarse["parts"][0]["finish"], "metal")
+        self.assertGreater(len(detailed["parts"][0]["vertices"]) // 9, 600)
+        self.assertLessEqual(len(coarse["parts"][0]["vertices"]) // 9, 600)
+        self.assertEqual(measures, coarse_measures)
+        with self.assertRaisesRegex(DesignError, "too detailed"):
+            art_preview_data(data, model, triangle_limit=12)

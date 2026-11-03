@@ -13,7 +13,7 @@ Point = tuple[float, float, float]
 Triangle = tuple[Point, Point, Point]
 XY = tuple[float, float]
 
-_CIRCLE_SEGMENTS = 96
+_CIRCLE_SEGMENTS = 128
 _STUD_ANGLE_STEP = math.tau / 64
 _STL_FACET = struct.Struct("<12fH")
 

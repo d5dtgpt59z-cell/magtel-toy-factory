@@ -115,7 +115,8 @@ magtel art-build badge.magtel-art.json -o badge.html
 
 The project records assumptions about scale, depth, or hidden faces. Edit the
 JSON and rebuild it locally without contacting Codex again. The CAD operations
-include boxes, cylinders, extrusions, lofts, and cuts. This path can create
+include boxes with square, rounded, or beveled edges, cylinders, extrusions,
+lofts, and cuts. This path can create
 multiple named solids for an assembly. Fine organic sculpting and automatically
 inferred moving joints are outside this version.
 
@@ -132,6 +133,12 @@ its feature dimensions and choose **Rebuild model**. The geometry updates in
 place and keeps your camera angle. Use **Undo** and **Redo** to compare
 successful rebuilds. Save a MAGTEL art project to continue later, or download
 STEP to open the exact solids in another CAD tool.
+
+Choose **Load robot gripper** to inspect an example with machined details,
+separate parts, and several finishes. In the inspector, change the selected
+part's **Surface finish** or **Color**, then rebuild to see the change. Finishes
+are for the viewport. Dimensions such as edge radius and bevel change the
+solid and are included in the STEP export.
 
 Choose **Load toy car** to start with a complete car, or use **Open project**
 to open a completed `magtel assemble` project. Click a wheel in the viewport

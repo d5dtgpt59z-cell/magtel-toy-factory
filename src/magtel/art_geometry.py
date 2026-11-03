@@ -14,7 +14,9 @@ _MAX_VERTICES = 4096
 _MAX_MM = 10_000
 _MIN_MM = 0.01
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
-_SIZE_COUNTS = {"box": 3, "cylinder": 2, "extrude": 1, "loft": 0}
+_EDGE_BOXES = {"rounded_box": "Edge radius", "chamfer_box": "Bevel"}
+_SIZE_COUNTS = {"box": 3, "rounded_box": 4, "chamfer_box": 4, "cylinder": 2, "extrude": 1, "loft": 0}
+_FINISHES = ("metal", "rubber", "paint", "polymer")
 
 
 def _schema_object(properties):
@@ -47,6 +49,7 @@ _FEATURE = _schema_object({
 _PART = _schema_object({
     "name": _STRING,
     "color": _STRING,
+    "finish": {"type": "string", "enum": list(_FINISHES)},
     "features": _schema_array(_FEATURE),
 })
 ART_SCHEMA = _schema_object({
@@ -56,10 +59,12 @@ ART_SCHEMA = _schema_object({
 })
 
 
-def _object(value, path, schema):
-    if not isinstance(value, dict) or value.keys() != schema["properties"].keys():
-        required = ", ".join(schema["properties"])
-        raise DesignError(f"{path} must contain exactly these fields: {required}.")
+def _object(value, path, schema, *, optional=()):
+    fields = schema["properties"].keys()
+    if not isinstance(value, dict) or not fields - optional <= value.keys() <= fields:
+        required = ", ".join(field for field in fields if field not in optional)
+        suffix = f" (plus optional {', '.join(optional)})" if optional else ""
+        raise DesignError(f"{path} must contain exactly these fields: {required}{suffix}.")
 
 
 def _array(value, path, minimum, maximum):
@@ -164,12 +169,19 @@ def _validate_feature(feature, path, first):
     if first and operation != "add":
         raise DesignError(f"{path} must add material before any cut.")
     if not isinstance(kind, str) or kind not in _SIZE_COUNTS:
-        raise DesignError(f"{path}.kind must be box, cylinder, extrude, or loft.")
+        raise DesignError(f"{path}.kind must be one of {', '.join(_SIZE_COUNTS)}.")
     _vector(feature["position"], f"{path}.position", 3, -_MAX_MM, _MAX_MM)
     _vector(feature["rotation"], f"{path}.rotation", 3, -360, 360)
-    _vector(feature["size"], f"{path}.size", _SIZE_COUNTS[kind], _MIN_MM, _MAX_MM)
-    if kind == "cylinder" and feature["size"][0] > _MAX_MM / 2:
+    size = feature["size"]
+    _vector(size, f"{path}.size", _SIZE_COUNTS[kind], _MIN_MM, _MAX_MM)
+    if kind == "cylinder" and size[0] > _MAX_MM / 2:
         raise DesignError(f"{path}.size radius must not exceed {_MAX_MM / 2:g} mm.")
+    if kind in _EDGE_BOXES:
+        limit = min(size[:3]) / 2
+        if size[3] >= limit:
+            raise DesignError(
+                f"{path}: {_EDGE_BOXES[kind]} must be smaller than half the shortest side ({limit:g} mm)."
+            )
 
     vertices = 0
     if kind == "extrude":
@@ -197,7 +209,7 @@ def validate_art(data: dict) -> dict:
     total_vertices = 0
     for index, part in enumerate(data["parts"]):
         path = f"parts[{index}]"
-        _object(part, path, _PART)
+        _object(part, path, _PART, optional=("finish",))
         _text(part["name"], f"{path}.name", 100)
         canonical_name = part["name"].strip().casefold()
         if canonical_name in names:
@@ -205,6 +217,8 @@ def validate_art(data: dict) -> dict:
         names.add(canonical_name)
         if not isinstance(part["color"], str) or not _COLOR.fullmatch(part["color"]):
             raise DesignError(f"{path}.color must be a hex color such as #28C4B4.")
+        if "finish" in part and part["finish"] not in _FINISHES:
+            raise DesignError(f"{path}.finish must be one of {', '.join(_FINISHES)}.")
         _array(part["features"], f"{path}.features", 1, _MAX_FEATURES_PER_PART)
         total_features += len(part["features"])
         if total_features > _MAX_FEATURES:
@@ -225,6 +239,9 @@ def _build_feature(bd, feature):
     align = (bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN)
     if kind == "box":
         shape = bd.Box(*size, align=align)
+    elif kind in _EDGE_BOXES:
+        box = bd.Box(*size[:3], align=align)
+        shape = bd.fillet(box.edges(), size[3]) if kind == "rounded_box" else bd.chamfer(box.edges(), size[3])
     elif kind == "cylinder":
         shape = bd.Cylinder(*size, align=align)
     elif kind == "extrude":

@@ -1,4 +1,4 @@
-"""Editable image-derived projects and exports from their exact geometry."""
+"""Editable CAD recipes and exports from their exact geometry."""
 
 from pathlib import Path
 
@@ -25,21 +25,41 @@ def load_art(path: Path) -> dict:
     return validate_art(data.get("recipe"))
 
 
+def _preview_meshes(solids, tolerance, angular_tolerance, triangle_limit):
+    meshes = []
+    triangle_count = 0
+    for part in solids:
+        vertices, triangles = part.tessellate(tolerance, angular_tolerance)
+        if not triangles:
+            raise DesignError(f"Could not preview {part.label}.")
+        triangle_count += len(triangles)
+        if triangle_limit is not None and triangle_count > triangle_limit:
+            return None
+        meshes.append([
+            round(coord, 6) for face in triangles for index in face for coord in vertices[index]
+        ])
+    return meshes
+
+
 def art_preview_data(
     recipe: dict, assembly, *, triangle_limit: int | None = None
 ) -> tuple[dict, list[dict]]:
     """Describe and tessellate the solids in an already-built art assembly."""
+    meshes = _preview_meshes(assembly.children, 0.03, 0.06, triangle_limit)
+    if meshes is None:
+        from OCP.BRepTools import BRepTools
+
+        # The kernel otherwise reuses the finer cached triangulation.
+        for part in assembly.children:
+            BRepTools.Clean_s(part.wrapped)
+        meshes = _preview_meshes(assembly.children, 0.08, 0.1, triangle_limit)
+        if meshes is None:
+            raise DesignError("This model is too detailed for the workspace preview.")
+
     parts = []
     measurements = []
-    triangle_count = 0
-    lines = [f'{recipe["name"]} — image-derived CAD']
-    for spec, part in zip(recipe["parts"], assembly.children):
-        vertices, triangles = part.tessellate(0.08)
-        if not triangles:
-            raise DesignError(f'Could not preview {spec["name"]}.')
-        triangle_count += len(triangles)
-        if triangle_limit is not None and triangle_count > triangle_limit:
-            raise DesignError("This model is too detailed for the workspace preview.")
+    lines = [f'{recipe["name"]} — editable CAD']
+    for spec, part, vertices in zip(recipe["parts"], assembly.children, meshes):
         bounds = part.bounding_box().size
         dimensions = [bounds.X, bounds.Y, bounds.Z]
         measurements.append({"name": spec["name"], "size": dimensions})
@@ -48,7 +68,8 @@ def art_preview_data(
         parts.append({
             "name": spec["name"],
             "color": [int(spec["color"][i:i + 2], 16) / 255 for i in (1, 3, 5)],
-            "vertices": [round(coord, 6) for face in triangles for index in face for coord in vertices[index]],
+            "finish": spec.get("finish", "polymer"),
+            "vertices": vertices,
             "explode": [0, 0, 0],
         })
     if recipe["assumptions"]:

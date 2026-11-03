@@ -28,20 +28,25 @@ with no code, markup, or commands. Honor the brief's design intent.
 Model the object's identifiable silhouette, proportions and visible structure.
 Make separate named parts for components that should be selectable on their
 own. A visual marking does not automatically need to become a solid. Give each
-part a color and use only the schema's geometry features. Start each part with
-an add feature; cuts subtract from that same part. Each part must form one
-connected solid. Overlap joined additions and make cuts actually intersect
-their target. Parts share world coordinates. Use #RRGGBB colors.
+part a #RRGGBB color and a finish: metal for machined or brushed surfaces,
+rubber for grips or tires, paint for coated parts, or polymer for plastic.
+Use only the schema's geometry features. Start each part with an add feature;
+cuts subtract from that same part. Each part must form one connected solid.
+Overlap joined additions and make cuts actually intersect their target.
+Parts share world coordinates.
 
 Feature kinds and local coordinates (millimeters):
 - box: size [width along X, depth along Y, height along Z], centered in XY.
+- rounded_box or chamfer_box: size [width, depth, height, edge radius or
+  bevel]. Apply the edge treatment to all edges, keeping the given outer
+  dimensions. The radius or bevel must be smaller than half the shortest side.
 - cylinder: size [radius, height], centered in XY, axis +Z.
 - extrude: size [height], profile [[x,y], ...], a simple XY polygon.
 - loft: size [], sections [{z,profile}, ...], ordered by increasing local Z.
   Each section is a simple XY polygon. Use equal vertex counts, consistent
   winding, and corresponding vertices in the same order across sections.
-Do not repeat a profile's first point at its end. Boxes, cylinders, and extrudes
-start at local Z=0. Loft sections use their stated local Z values. Apply
+Do not repeat a profile's first point at its end. Boxes, cylinders, and
+extrusions start at local Z=0. Loft sections use their stated local Z values. Apply
 rotation [X,Y,Z] in degrees, then position [X,Y,Z] in world millimeters.
 Use [0,0,0] when no rotation or translation is needed. Use [] for unused size,
 profile, or sections arrays. Prefer a small number of deliberate features.

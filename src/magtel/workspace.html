@@ -100,6 +100,11 @@
     }
     .remove:hover:not(:disabled) { background: #775346; }
     .field-label { display: block; margin: 0 0 .35rem; font-size: .75rem; font-weight: 700; }
+    .surface-fields { display: grid; grid-template-columns: 1fr 4rem; gap: .45rem; }
+    .surface-fields input[type="color"] {
+      width: 100%; min-height: 2.05rem; padding: .12rem .24rem;
+      border: 1px solid #b7beb3; border-radius: .3rem; background: #fffef8;
+    }
     .brief-block { margin: 0 0 .65rem; }
     .reference-block { margin: .85rem 0 .65rem; }
     textarea, select, input[type="number"] {
@@ -208,6 +213,7 @@
         New build
       </button>
       <button class="button light" id="load-car" type="button">Load toy car</button>
+      <button class="button light" id="load-gripper" type="button">Load robot gripper</button>
       <button class="button light" id="load-demo" type="button">Load example</button>
       <button class="button light" id="open-project" type="button">Open project</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden>
@@ -292,6 +298,18 @@
           <form id="dimensions" novalidate hidden>
             <dl class="measured" id="measured" aria-label="Measured part dimensions"></dl>
             <label class="picker" for="part-picker"><span class="field-label">Part</span><select id="part-picker"></select></label>
+            <div class="surface-fields" id="surface-fields">
+              <label class="picker" for="finish-picker">
+                <span class="field-label">Surface finish</span>
+                <select id="finish-picker">
+                  <option value="polymer">Molded plastic</option>
+                  <option value="metal">Brushed metal</option>
+                  <option value="rubber">Rubber</option>
+                  <option value="paint">Painted finish</option>
+                </select>
+              </label>
+              <label class="picker" for="part-color"><span class="field-label">Color</span><input id="part-color" type="color"></label>
+            </div>
             <label class="picker" id="feature-selection" for="feature-picker"><span class="field-label">Feature</span><select id="feature-picker"></select></label>
             <div class="editor" id="fields"></div>
             <details class="editor" id="car-settings" hidden>

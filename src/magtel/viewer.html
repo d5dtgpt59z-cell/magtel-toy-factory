@@ -44,7 +44,10 @@
     .stage { min-width: 0; background: #101c24; color: #e6e9df; border: 1px solid #243943; border-radius: 6px; overflow: hidden; }
     .stage-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem 1rem; padding: .7rem .9rem; border-bottom: 1px solid #33434b; color: #bfcecd; text-transform: uppercase; font: .71rem var(--mono); letter-spacing: .07em; }
     .stage-head strong { color: var(--accent); }
-    .viewport { position: relative; }
+    .viewport {
+      position: relative;
+      background: radial-gradient(ellipse at 53% 43%, #2c414c, #192b35 64%, #101c24);
+    }
     canvas { display: block; width: 100%; height: clamp(19rem, 59vh, 42rem); touch-action: none; cursor: grab; }
     canvas:active { cursor: grabbing; }
     canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
@@ -241,7 +244,7 @@
     const buttons = [...document.querySelectorAll("[data-camera]")];
     const visibility = [];
     const partsList = document.getElementById("parts");
-    const gl = canvas.getContext("webgl", {antialias: true, alpha: false});
+    const gl = canvas.getContext("webgl", {antialias: true});
     const initialYaw = 1.01;
     const initialPitch = 0.52;
     let yaw = initialYaw;
@@ -435,65 +438,180 @@
       return handle;
     }
 
-    function normals(v) {
-      const n = new Float32Array(v.length);
+    function smoothNormals(v) {
+      const weld = new Map();
+      const corners = new Array(v.length / 3);
+      // Weld the triangle soup at shared positions. A 36° crease separates
+      // the cap of a cylinder, or a machined edge, from the adjacent wall.
+      const crease = Math.cos(Math.PI / 5);
       for (let i = 0; i < v.length; i += 9) {
         const ax = v[i + 3] - v[i], ay = v[i + 4] - v[i + 1], az = v[i + 5] - v[i + 2];
         const bx = v[i + 6] - v[i], by = v[i + 7] - v[i + 1], bz = v[i + 8] - v[i + 2];
         const x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx;
-        const magnitude = Math.hypot(x, y, z) || 1;
+        const magnitude = Math.hypot(x, y, z);
+        if (!magnitude) continue;
+        const nx = x / magnitude, ny = y / magnitude, nz = z / magnitude;
         for (let j = i; j < i + 9; j += 3) {
-          n[j] = x / magnitude;
-          n[j + 1] = y / magnitude;
-          n[j + 2] = z / magnitude;
+          const key = v[j] + "," + v[j + 1] + "," + v[j + 2];
+          let groups = weld.get(key);
+          if (!groups) weld.set(key, groups = []);
+          let group = groups.find(g => g.nx * nx + g.ny * ny + g.nz * nz >= crease);
+          if (!group) {
+            group = {nx, ny, nz, x: 0, y: 0, z: 0};
+            groups.push(group);
+          }
+          group.x += x;
+          group.y += y;
+          group.z += z;
+          corners[j / 3] = group;
         }
       }
-      return n;
+      for (const groups of weld.values()) {
+        for (const g of groups) {
+          const length = Math.hypot(g.x, g.y, g.z) || 1;
+          g.x /= length;
+          g.y /= length;
+          g.z /= length;
+        }
+      }
+      const result = new Float32Array(v.length);
+      for (let i = 0; i < corners.length; i++) {
+        const g = corners[i];
+        if (!g) continue;
+        result[i * 3] = g.x;
+        result[i * 3 + 1] = g.y;
+        result[i * 3 + 2] = g.z;
+      }
+      return result;
     }
 
+    const finishes = new Map([["polymer", 0], ["metal", 1], ["rubber", 2], ["paint", 3]]);
+    const defaultFinish = new Map([["axle", "metal"], ["wheel", "rubber"], ["chassis", "paint"]]);
+
     function setupRenderer() {
+      const derivatives = gl.getExtension("OES_standard_derivatives");
+      const highPrecision = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+      const precision = highPrecision?.precision ? "highp" : "mediump";
       const vertex = shader(gl.VERTEX_SHADER, `
         attribute vec3 aPosition;
         attribute vec3 aNormal;
-        uniform vec3 uOffset, uTarget, uRight, uUp;
+        uniform vec3 uOffset, uTarget, uRight, uUp, uSurfaceOrigin;
         uniform mediump vec3 uToward;
-        uniform vec2 uScale, uPivot, uRotation;
+        uniform vec2 uScale, uPivot, uRotation, uShadowSize;
+        uniform mediump int uPass;
         uniform float uDepth;
         varying mediump vec3 vNormal;
-        varying mediump vec2 vAxle;
+        varying ${precision} vec3 vSurface;
+        varying ${precision} vec2 vAxle;
         vec3 rotateAxle(vec3 value) {
           return vec3(uRotation.x * value.x + uRotation.y * value.z, value.y,
             uRotation.x * value.z - uRotation.y * value.x);
         }
         void main() {
           vec3 pivot = vec3(uPivot.x, 0.0, uPivot.y);
-          vec3 p = rotateAxle(aPosition - pivot) + pivot + uOffset - uTarget;
+          vec3 model = uPass == 2 ? vec3(aPosition.xy * uShadowSize, 0.0)
+            : rotateAxle(aPosition - pivot) + pivot;
+          vec3 p = model + uOffset - uTarget;
           gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
             -dot(p, uToward) / uDepth, 1.0);
           vNormal = rotateAxle(aNormal);
+          vSurface = uPass == 2 ? aPosition : aPosition - uSurfaceOrigin;
           vAxle = aPosition.xz - uPivot;
         }`);
       const fragment = shader(gl.FRAGMENT_SHADER, `
-        precision mediump float;
+        ${derivatives ? "#extension GL_OES_standard_derivatives : enable" : ""}
+        precision ${precision} float;
         varying mediump vec3 vNormal;
-        varying mediump vec2 vAxle;
+        varying ${precision} vec3 vSurface;
+        varying ${precision} vec2 vAxle;
         uniform vec3 uColor, uMark;
         uniform mediump vec3 uToward;
-        uniform bool uLit;
-        void main() {
-          float light = 1.0;
-          vec3 color = uColor;
-          if (uLit) {
-            vec3 n = normalize(vNormal);
-            vec3 key = normalize(vec3(0.25, 0.45, 1.0));
-            light = 0.40 + 0.43 * max(dot(n, key), 0.0)
-              + 0.17 * max(dot(n, uToward), 0.0);
-            if (abs(n.y) > 0.99 && abs(vAxle.x) < uMark.z
-                && vAxle.y > uMark.x && vAxle.y < uMark.y) {
-              color = vec3(1.0, 0.93, 0.73);
+        uniform mediump int uPass;
+        uniform int uFinish;
+        uniform float uWheelRadius, uOpacity;
+        uniform bool uSelected;
+
+        // Filter fine stripes against their pixel footprint when derivatives
+        // are available. This keeps textures steady while zooming or spinning.
+        float stripe(float phase, float width) {
+          float blur = ${derivatives ? "clamp(fwidth(phase), 0.025, 0.5)" : "0.10"};
+          float distance = abs(fract(phase + 0.5) - 0.5);
+          return (1.0 - smoothstep(width - blur, width + blur, distance))
+            * (1.0 - smoothstep(0.16, 0.5, blur));
+        }
+
+        vec3 surface(vec3 n) {
+          vec3 base = uColor;
+          float roughness = 0.56;
+          float metalness = 0.0;
+          float grain = stripe(dot(vSurface, vec3(1.19, 0.93, 1.67)), 0.12);
+          if (uFinish == 1) {
+            // Brush lines remain on the material while the part rotates.
+            float brush = stripe(dot(vSurface, vec3(2.4, 0.17, 3.6)), 0.14);
+            base *= 0.93 + 0.11 * brush;
+            roughness = 0.31 + 0.12 * brush;
+            metalness = 0.81;
+          } else if (uFinish == 2) {
+            roughness = 0.86;
+            base = mix(vec3(0.19, 0.21, 0.23), uColor, 0.24) * (0.95 + 0.06 * grain);
+            if (uWheelRadius > 0.0) {
+              float radial = length(vAxle) / uWheelRadius;
+              float endFace = smoothstep(0.65, 0.96, abs(n.y));
+              float hub = (1.0 - smoothstep(0.65, 0.68, radial)) * endFace;
+              float ring = (1.0 - smoothstep(0.008, 0.02, abs(radial - 0.83))) * endFace;
+              float angle = atan(vAxle.y, vAxle.x) * 5.093;
+              float tread = stripe(angle + abs(vSurface.y) * 0.39, 0.14);
+              tread = max(tread, stripe(vSurface.y * 0.72 + 0.21, 0.10) * 0.65);
+              base *= 1.0 - 0.34 * tread * (1.0 - endFace) - 0.25 * ring;
+              base = mix(base, uColor, hub);
+              roughness = mix(roughness, 0.38, hub);
             }
+          } else if (uFinish == 3) {
+            base *= 0.97 + 0.045 * grain;
+            roughness = 0.31;
+          } else {
+            base *= 0.98 + 0.04 * grain;
           }
-          gl_FragColor = vec4(color * light, 1.0);
+          if (abs(n.y) > 0.99 && abs(vAxle.x) < uMark.z
+              && vAxle.y > uMark.x && vAxle.y < uMark.y) {
+            base = vec3(1.0, 0.88, 0.62);
+            metalness = 0.0;
+          }
+
+          vec3 linearBase = pow(base, vec3(2.2));
+          vec3 key = normalize(vec3(-0.32, 0.48, 0.84));
+          vec3 fill = normalize(vec3(0.80, -0.39, 0.48));
+          vec3 toward = normalize(uToward);
+          float up = n.z * 0.5 + 0.5;
+          float ndv = max(dot(n, toward), 0.0);
+          vec3 ambient = mix(vec3(0.20, 0.24, 0.29), vec3(0.47, 0.53, 0.59), up);
+          vec3 diffuse = ambient + vec3(0.83, 0.73, 0.60) * max(dot(n, key), 0.0)
+            + vec3(0.30, 0.41, 0.55) * max(dot(n, fill), 0.0);
+
+          vec3 f0 = mix(vec3(0.045), linearBase, metalness);
+          float fresnel = pow(1.0 - ndv, 5.0);
+          vec3 reflection = reflect(-toward, n);
+          float softbox = pow(max(dot(reflection, key), 0.0), mix(15.0, 2.4, roughness));
+          float kick = pow(max(dot(reflection, fill), 0.0), mix(18.0, 3.0, roughness));
+          vec3 reflected = f0 * (0.25 + 0.55 * up + 1.45 * softbox + 0.70 * kick);
+          reflected += (vec3(1.0) - f0) * fresnel * (0.035 + 0.11 * softbox);
+          vec3 linear = linearBase * diffuse * (1.0 - metalness) + reflected;
+          vec3 color = pow(clamp(linear, 0.0, 1.0), vec3(1.0 / 2.2));
+          if (uSelected) {
+            color = mix(color, vec3(1.0, 0.74, 0.31), 0.12 + 0.34 * pow(1.0 - ndv, 2.0));
+          }
+          return color;
+        }
+
+        void main() {
+          if (uPass == 1) {
+            gl_FragColor = vec4(surface(normalize(vNormal)), 1.0);
+          } else if (uPass == 2) {
+            float falloff = 1.0 - smoothstep(0.15, 1.0, length(vSurface.xy));
+            gl_FragColor = vec4(0.025, 0.045, 0.055, uOpacity * falloff * falloff);
+          } else {
+            gl_FragColor = vec4(uColor, 1.0);
+          }
         }`);
       const program = gl.createProgram();
       gl.attachShader(program, vertex);
@@ -505,7 +623,7 @@
       gl.useProgram(program);
       gl.deleteShader(vertex);
       gl.deleteShader(fragment);
-      gl.clearColor(16 / 255, 28 / 255, 36 / 255, 1);
+      gl.clearColor(0, 0, 0, 0);
       gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.CULL_FACE);
       gl.cullFace(gl.BACK);
@@ -513,23 +631,36 @@
       const position = gl.getAttribLocation(program, "aPosition");
       const normal = gl.getAttribLocation(program, "aNormal");
       const uniform = Object.fromEntries(
-        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit", "Pivot", "Rotation", "Mark"]
+        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Pass", "Pivot",
+          "Rotation", "Mark", "SurfaceOrigin", "ShadowSize", "Opacity", "Finish", "WheelRadius", "Selected"]
           .map(name => [name, gl.getUniformLocation(program, "u" + name)])
       );
       const low = [Infinity, Infinity, Infinity];
       const high = [-Infinity, -Infinity, -Infinity];
       const objects = data.parts.map((part) => {
         const v = part.vertices;
+        const partLow = [Infinity, Infinity, Infinity];
+        const partHigh = [-Infinity, -Infinity, -Infinity];
         for (let i = 0; i < v.length; i++) {
           const axis = i % 3;
-          low[axis] = Math.min(low[axis], v[i]);
-          high[axis] = Math.max(high[axis], v[i]);
+          partLow[axis] = Math.min(partLow[axis], v[i]);
+          partHigh[axis] = Math.max(partHigh[axis], v[i]);
+        }
+        for (let axis = 0; axis < 3; axis++) {
+          low[axis] = Math.min(low[axis], partLow[axis]);
+          high[axis] = Math.max(high[axis], partHigh[axis]);
         }
         const axle = axles.find(item => item.name === part.axle);
+        const pivot = data.axle_pivots?.[part.axle] || [0, 0];
         return {
-          position: buffer(v), normal: buffer(normals(v)), count: v.length / 3,
-          axle, pivot: axle ? data.axle_pivots[axle.name] : [0, 0],
-          mark: axle ? part.mark : [0, 0, 0],
+          position: buffer(v), normal: buffer(smoothNormals(v)), count: v.length / 3,
+          axle, pivot, mark: part.mark || [0, 0, 0],
+          surfaceOrigin: partLow.map((value, axis) => (value + partHigh[axis]) / 2),
+          halfWidth: (partHigh[0] - partLow[0]) / 2,
+          halfDepth: (partHigh[1] - partLow[1]) / 2,
+          bottom: partLow[2],
+          wheelRadius: part.kind === "wheel" ? pivot[1] : 0,
+          finish: finishes.get(part.finish) ?? finishes.get(defaultFinish.get(part.kind)) ?? 0,
         };
       });
       const target = low.map((value, axis) => (value + high[axis]) / 2);
@@ -560,6 +691,7 @@
           target[0] + line, target[1] + size, ground);
       }
       const gridBuffer = buffer(grid);
+      const shadowBuffer = buffer([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]);
       document.getElementById("grid-label").textContent =
         "Orthographic · " + Number(step.toPrecision(3)) + " mm grid";
 
@@ -602,7 +734,7 @@
       }
 
       function drawObjects(picking) {
-        gl.uniform1i(uniform.Lit, picking ? 0 : 1);
+        gl.uniform1i(uniform.Pass, picking ? 0 : 1);
         if (picking) gl.disableVertexAttribArray(normal);
         objects.forEach((object, i) => {
           if (!visibility[i].checked) return;
@@ -613,11 +745,12 @@
             gl.uniform3f(uniform.Color, (id & 255) / 255, ((id >> 8) & 255) / 255, (id >> 16) / 255);
           } else {
             attribute(normal, object.normal);
-            const color = i === selectedPart
-              ? part.color.map((value, axis) => value * .58 + [1, .78, .33][axis] * .42)
-              : part.color;
-            gl.uniform3fv(uniform.Color, color);
+            gl.uniform3fv(uniform.Color, part.color);
             gl.uniform3fv(uniform.Mark, object.mark);
+            gl.uniform3fv(uniform.SurfaceOrigin, object.surfaceOrigin);
+            gl.uniform1i(uniform.Finish, object.finish);
+            gl.uniform1f(uniform.WheelRadius, object.wheelRadius);
+            gl.uniform1i(uniform.Selected, i === selectedPart ? 1 : 0);
           }
           const radians = (object.axle?.angle || 0) * Math.PI / 180;
           gl.uniform2fv(uniform.Pivot, object.pivot);
@@ -625,6 +758,39 @@
           gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
           gl.drawArrays(gl.TRIANGLES, 0, object.count);
         });
+      }
+
+      function drawGround() {
+        gl.disableVertexAttribArray(normal);
+        gl.uniform2f(uniform.Pivot, 0, 0);
+        gl.uniform2f(uniform.Rotation, 1, 0);
+
+        attribute(position, gridBuffer);
+        gl.uniform1i(uniform.Pass, 0);
+        gl.uniform3f(uniform.Color, 0.23, 0.30, 0.33);
+        gl.uniform3f(uniform.Offset, 0, 0, 0);
+        gl.drawArrays(gl.LINES, 0, grid.length / 3);
+        if (pitch <= 0) return;
+
+        attribute(position, shadowBuffer);
+        gl.uniform1i(uniform.Pass, 2);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.DEPTH_TEST);
+        objects.forEach((object, i) => {
+          if (!visibility[i].checked) return;
+          const [x, y] = object.surfaceOrigin;
+          const [dx, dy, dz] = data.parts[i].explode;
+          const clearance = Math.max(0, object.bottom + dz * exploded - ground);
+          const penumbra = radius * .08 + Math.min(clearance * .38, radius * .19);
+          gl.uniform2f(uniform.ShadowSize, object.halfWidth + penumbra, object.halfDepth + penumbra);
+          gl.uniform3f(uniform.Offset, x + dx * exploded + clearance * .12,
+            y + dy * exploded - clearance * .20, ground);
+          gl.uniform1f(uniform.Opacity, .62 / (1 + clearance / (radius * .21)));
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        });
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
       }
 
       if (embedded) {
@@ -647,7 +813,7 @@
             gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, result);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.enable(gl.DITHER);
-            gl.clearColor(16 / 255, 28 / 255, 36 / 255, 1);
+            gl.clearColor(0, 0, 0, 0);
             return result[0] + result[1] * 256 + result[2] * 65536 - 1;
           };
         }
@@ -662,16 +828,7 @@
         gl.viewport(0, 0, width, height);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         applyView(width, height);
-
-        attribute(position, gridBuffer);
-        gl.disableVertexAttribArray(normal);
-        gl.uniform1i(uniform.Lit, 0);
-        gl.uniform3f(uniform.Color, 0.18, 0.25, 0.29);
-        gl.uniform3f(uniform.Offset, 0, 0, 0);
-        gl.uniform2f(uniform.Pivot, 0, 0);
-        gl.uniform2f(uniform.Rotation, 1, 0);
-        gl.drawArrays(gl.LINES, 0, grid.length / 3);
-
+        drawGround();
         drawObjects(false);
       };
     }

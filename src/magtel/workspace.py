@@ -217,7 +217,11 @@ class _WorkspaceHandler(BaseHTTPRequestHandler):
             asset, media_type = assets[route]
             self._send(HTTPStatus.OK, media_type, files("magtel").joinpath(asset).read_bytes())
             return
-        demos = {"api/demo": "workspace_demo.json", "api/car": "workspace_car.json"}
+        demos = {
+            "api/demo": "workspace_demo.json",
+            "api/car": "workspace_car.json",
+            "api/gripper": "workspace_gripper.json",
+        }
         if route in demos:
             recipe = json.loads(files("magtel").joinpath(demos[route]).read_text(encoding="utf-8"))
             with self.server.cad, TemporaryDirectory(prefix="magtel-workspace-") as temp:
