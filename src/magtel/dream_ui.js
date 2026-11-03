@@ -314,7 +314,8 @@ function toggleTest() {
     drawTest(sample);
     if (sample.finished) {
       stopTest();
-      $("#test-result").textContent = `Test ended. Travel ${Math.round(sample.distance)} mm. ${sample.collisions} impacts. ${sample.stability}.`;
+      const impacts = sample.collisions === 1 ? "impact" : "impacts";
+      $("#test-result").textContent = `Test ended. Travel ${Math.round(sample.distance)} mm. ${sample.collisions} ${impacts}. ${sample.stability}.`;
     } else {
       current.frame = requestAnimationFrame(step);
     }
