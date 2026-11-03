@@ -313,7 +313,8 @@ function stopTest() {
 
 function resetTest() {
   stopTest();
-  current.test = MagtelPhysics.create(current.model.design, $("#track").value);
+  const {design, dimensions} = current.model;
+  current.test = MagtelPhysics.create(design, $("#track").value, dimensions.height);
   $("#run-test").textContent = "Run test";
   $("#test-result").textContent = "";
   drawTest(current.test.sample);
