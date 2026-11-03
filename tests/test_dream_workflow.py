@@ -88,7 +88,7 @@ class DreamWorkflowTests(unittest.TestCase):
             self.assertEqual(load_design(saved).design, variant)
             preview = Path(folder) / "share.html"
             self.assertEqual(main(["preview", str(saved), "-o", str(preview)]), 0)
-            self.assertNotIn('<script src=', preview.read_text())
+            self.assertNotIn('<script src=', preview.read_text(encoding="utf-8"))
             self.assertEqual(main(["fit", str(saved)]), 0)
 
         status, _, reopened = self.request("/api/import", {"design": variant})
@@ -97,7 +97,7 @@ class DreamWorkflowTests(unittest.TestCase):
 
     def test_accepts_legacy_complete_car(self):
         path = Path(__file__).resolve().parents[1] / "examples" / "toy-car.magtel.json"
-        original = json.loads(path.read_text())
+        original = json.loads(path.read_text(encoding="utf-8"))
         status, _, converted = self.request("/api/import", {"design": original})
         self.assertEqual(status, 200)
         self.assertEqual(len(converted["parts"]), 7)
