@@ -68,11 +68,16 @@ def export_preview(spec: CarSpec | ToySpec, path: Path, *, force: bool = False) 
         "parts": parts,
         "assembly": assembly,
     }
+    write_preview_data(data, path, force=force)
+
+
+def write_preview_data(data: dict, path: Path, *, force: bool = False) -> None:
+    """Render geometry already converted to the standalone viewer's data format."""
     # Script data uses raw-text parsing even with type="application/json".
     # Escaping the opening angle bracket prevents premature tag termination.
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     values = {
-        "%%TITLE%%": escape(spec.name),
+        "%%TITLE%%": escape(data["title"]),
         "%%DATA%%": payload.replace("<", "\\u003c"),
     }
     template = files("magtel").joinpath("viewer.html").read_text(encoding="utf-8")

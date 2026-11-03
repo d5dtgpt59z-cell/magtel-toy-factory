@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "magtel-toy-factory"
-version = "0.3.0"
+version = "0.4.0"
 description = "Design and assemble editable toy parts in plain language and export them for 3D printing."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,6 +20,9 @@ classifiers = [
 
 [project.scripts]
 magtel = "magtel.cli:main"
+
+[project.optional-dependencies]
+cad = ["build123d>=0.13,<0.14"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

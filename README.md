@@ -2,8 +2,9 @@
 
 Tell MAGTEL what part you want or how parts should fit together, then change
 your mind in the same conversation. MAGTEL reads back the dimensions, saves an
-editable design, and exports STL files for your slicer. The CLI runs locally
-with no API key, model download, or runtime dependencies.
+editable design, and exports STL files for your slicer. The plain-language
+workshop runs locally without an account or extra packages. The optional
+reference-art workflow uses the Codex CLI and a local CAD engine.
 
 ## Get started
 
@@ -95,6 +96,29 @@ magtel export car.magtel.json -o car-parts.zip
 Or open the [example car](examples/toy-car.magtel.json) with
 `magtel workshop examples/toy-car.magtel.json` from the source folder.
 
+## Turn reference art into a part
+
+Use an illustration, sketch, or product photo as a reference and describe what
+you want to build. Give an overall size and name any hidden features that need
+to fit, such as a peg, slot, or screw hole. Use `--view` to attach another angle.
+
+Install the CAD extra on Python 3.11 or later with `python -m pip install ".[cad]"`.
+Install and sign in to the Codex CLI for the image interpretation step. The
+`magtel art` command sends the supplied images and brief to Codex. MAGTEL uses
+the returned dimensions and features to build the solids on your computer.
+
+```sh
+magtel art sketch.png "Make a 40 mm badge, 4 mm thick, using the central symbol as raised relief" -o badge.magtel-art.json
+magtel art-build badge.magtel-art.json -o badge.step
+magtel art-build badge.magtel-art.json -o badge.html
+```
+
+The project records assumptions about scale, depth, or hidden faces. Edit the
+JSON and rebuild it locally without contacting Codex again. The CAD operations
+include boxes, cylinders, extrusions, lofts, and cuts. This path can create
+multiple named solids for an assembly. Fine organic sculpting and automatically
+inferred moving joints are outside this version.
+
 ## Inspect a design in 3D
 
 Type `Preview it` in the workshop to open the current model in your browser.
@@ -144,7 +168,7 @@ Centimeters and inches are accepted and converted to millimeters. Block
 dimensions follow width × depth × height. Stud counts follow columns × rows.
 The studs are solid posts fused to the top of a flat-bottomed block.
 
-Version 0.3 uses a fixed vocabulary, part families, and a symmetric four-wheel
+The original offline workshop uses a fixed vocabulary, part families, and a symmetric four-wheel
 car assembly. Both axles share one design and all four wheels share one design.
 Unsupported descriptions return an error and leave the current design intact.
 The release exports

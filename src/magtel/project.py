@@ -21,10 +21,10 @@ def load_part(path: Path) -> ToySpec:
     return decode_part(read_json(path, label="MAGTEL part"), path)
 
 
-def read_json(path: Path, *, label: str) -> object:
+def read_json(path: Path, *, label: str, limit: int = MAX_PART_FILE_SIZE) -> object:
     with path.open("rb") as file:
-        raw = file.read(MAX_PART_FILE_SIZE + 1)
-    if len(raw) > MAX_PART_FILE_SIZE:
+        raw = file.read(limit + 1)
+    if len(raw) > limit:
         raise DesignError(f"{path} is too large to be a {label}.")
     try:
         return json.loads(raw)

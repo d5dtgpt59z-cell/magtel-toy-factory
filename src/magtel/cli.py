@@ -1,6 +1,7 @@
 """Command line and interactive workshop for MAGTEL Toy Factory."""
 
 import argparse
+import errno
 import sys
 import webbrowser
 from pathlib import Path
@@ -258,6 +259,16 @@ def _parser() -> argparse.ArgumentParser:
     make.add_argument("request", nargs="+")
     assemble = commands.add_parser("assemble", help="build a toy car in the workshop or from a description")
     assemble.add_argument("request", nargs="*")
+    art = commands.add_parser("art", help="use Codex and reference art to design an editable CAD part")
+    art.add_argument("image", help="primary PNG, JPEG, or WebP reference sent to Codex")
+    art.add_argument("brief", nargs="+", help="describe the part and its intended dimensions")
+    art.add_argument("--view", action="append", default=[], metavar="IMAGE", help="attach another reference view")
+    art.add_argument("-o", "--output", required=True, metavar="PROJECT.json", help="save the editable art project")
+    art.add_argument("--force", action="store_true", help="replace an existing project")
+    art_build = commands.add_parser("art-build", help="rebuild an art project as STEP, STL, or an offline viewer")
+    art_build.add_argument("file", metavar="PROJECT")
+    art_build.add_argument("-o", "--output", required=True, metavar="FILE", help="write .step, .stl, or .html")
+    art_build.add_argument("--force", action="store_true", help="replace an existing output file")
     edit = commands.add_parser("edit", help="describe changes to a saved design")
     edit.add_argument("file")
     edit.add_argument("request", nargs="+")
@@ -286,7 +297,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"make", "assemble", "edit", "show", "export", "preview", "fit", "workshop", "examples"}
+    commands = {"make", "assemble", "art", "art-build", "edit", "show", "export", "preview", "fit",
+                "workshop", "examples"}
     if argv and argv[0] not in commands and not argv[0].startswith("-"):
         argv.insert(0, "make")
     args = _parser().parse_args(argv)
@@ -300,6 +312,35 @@ def main(argv: list[str] | None = None) -> int:
             return _workshop(car=True)
         if args.command == "examples":
             _show_examples()
+        elif args.command == "art":
+            from .art_geometry import build_art
+            from .art_io import save_art
+            from .art_provider import interpret_art
+
+            destination = _design_path(args.output)
+            if not destination.parent.is_dir():
+                raise DesignError(f"Folder {destination.parent} does not exist.")
+            if not args.force and (destination.exists() or destination.is_symlink()):
+                raise FileExistsError(errno.EEXIST, "File exists", destination)
+            try:
+                import build123d  # noqa: F401
+            except ImportError as error:
+                raise DesignError("Art builds require Python 3.11+ and the MAGTEL cad extra.") from error
+            images = [_path(image) for image in (args.image, *args.view)]
+            print("Interpreting reference art with Codex…", flush=True)
+            recipe = interpret_art(images, " ".join(args.brief))
+            build_art(recipe)
+            save_art(recipe, destination, force=args.force)
+            print(f'Built {recipe["name"]} as {len(recipe["parts"])} CAD part(s).')
+            for assumption in recipe["assumptions"]:
+                print(f"  Assumption: {assumption}")
+            print(f"Saved editable art project to {destination}.")
+        elif args.command == "art-build":
+            from .art_io import export_art, load_art
+
+            destination = _path(args.output)
+            export_art(load_art(_design_path(args.file)), destination, force=args.force)
+            print(f"Built {destination} from the saved art project.")
         elif args.command in ("make", "edit", "assemble"):
             current = load_design(_design_path(args.file)) if args.command == "edit" else None
             design = _parse_design(" ".join(args.request), current, car=args.command == "assemble")
