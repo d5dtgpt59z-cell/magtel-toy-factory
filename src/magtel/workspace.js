@@ -15,6 +15,7 @@ const dropzone = byId("dropzone");
 const maxImageBytes = 16 * 1024 * 1024;
 const maxTotalBytes = 32 * 1024 * 1024;
 const maxHistoryEntries = 50;
+const carFormat = "magtel-assembly";
 
 const references = [];
 const undoHistory = [];
@@ -23,8 +24,14 @@ let currentRecipe = null;
 let draft = null;
 let measurements = [];
 let camera = null;
+let carPose = null;
+let fitReport = "";
 let busy = "";
 let dirty = false;
+
+function isCar() {
+  return currentRecipe?.format === carFormat;
+}
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -35,22 +42,27 @@ function node(tag, text, className) {
 
 function setStatus(id, message, error = false) {
   const status = byId(id);
-  status.textContent = message;
+  if (status.textContent !== message) status.textContent = message;
   status.classList.toggle("error", error);
 }
 
 function refreshControls() {
   const working = Boolean(busy);
+  const canExport = !working && currentRecipe && !dirty;
   byId("generate").disabled = working || !references.length || !brief.value.trim();
   byId("rebuild").disabled = working || !dirty || !draft;
   undoButton.disabled = working || dirty || !undoHistory.length;
   redoButton.disabled = working || dirty || !redoHistory.length;
   discardButton.disabled = working;
   discardButton.hidden = !dirty;
+  byId("load-car").disabled = working;
   byId("load-demo").disabled = working;
   byId("open-project").disabled = working;
-  byId("save-project").disabled = working || !currentRecipe || dirty;
-  byId("save-step").disabled = working || !currentRecipe || dirty;
+  byId("save-project").disabled = !canExport;
+  byId("save-step").disabled = !canExport || isCar();
+  byId("save-part").disabled = !canExport || !isCar();
+  byId("save-parts").disabled = !canExport || !isCar();
+  byId("check-fit").disabled = working || !isCar();
   dropzone.disabled = working;
   brief.readOnly = busy === "generate";
   for (const input of dimensions.querySelectorAll("input, select")) input.disabled = working;
@@ -59,12 +71,16 @@ function refreshControls() {
   const state = byId("model-state");
   const activity = {
     demo: "Loading example",
+    car: "Loading toy car",
     generate: "Generating",
     rebuild: "Rebuilding",
     undo: "Undoing",
     redo: "Redoing",
     open: "Opening project",
     step: "Exporting STEP",
+    fit: "Checking fit",
+    stl: "Exporting STL",
+    parts: "Packing parts",
   };
   state.textContent = activity[busy] || (dirty ? "Edits pending" : currentRecipe ? "Model ready" : "No model");
   state.classList.toggle("busy", working);
@@ -191,7 +207,7 @@ async function run(action, status, pendingMessage, operation) {
     setStatus(status, error.message || "The workspace operation failed.", true);
     if (!currentRecipe) {
       byId("empty-view").querySelector("strong").textContent = "No model loaded";
-      byId("empty-view").querySelector("p").textContent = "Load the example or generate a part from your art.";
+      byId("empty-view").querySelector("p").textContent = "Load an example, open a project, or generate a part from your art.";
     }
   } finally {
     busy = "";
@@ -224,6 +240,7 @@ function markEdit() {
   setStatus("dimension-status", dirty
     ? "Rebuild or discard pending edits to use model history."
     : "Measurements reflect the last successful build.");
+  if (isCar()) showCommittedFit();
   refreshControls();
 }
 
@@ -274,6 +291,68 @@ const sizeLabels = {
   cylinder: ["Radius", "Height"],
   extrude: ["Height"],
 };
+const carPartFields = {
+  chassis: [["width", "Length"], ["depth", "Width"], ["height", "Height"]],
+  axle: [["diameter", "Diameter"], ["thickness", "Length"]],
+  wheel: [["diameter", "Diameter"], ["thickness", "Thickness"], ["hole", "Bore diameter"]],
+};
+const carAssemblyFields = [
+  ["wheelbase", "Wheelbase"], ["wheel_gap", "Side gap"], ["axle_clearance", "Bore clearance"],
+];
+
+function carNumberRow(values, fields) {
+  const row = node("div", undefined, "number-row" + (fields.length === 2 ? " two" : ""));
+  for (const [key, label] of fields) {
+    row.append(numberField(label, values[key], value => { values[key] = value; }, true));
+  }
+  return row;
+}
+
+function renderCarPart(kind) {
+  const fields = byId("fields");
+  fields.replaceChildren(node("h3", "Size (mm)"), carNumberRow(draft.assembly[kind], carPartFields[kind]));
+  if (kind === "wheel" || kind === "axle") {
+    fields.append(node("p", kind === "wheel" ? "All four wheels share these dimensions." :
+      "Both axles share these dimensions.", "hint"));
+  }
+  byId("save-part").textContent = "Download " + kind + " STL";
+}
+
+function renderCarSettings() {
+  const fields = byId("assembly-fields");
+  if (!isCar()) {
+    fields.replaceChildren();
+    return;
+  }
+  fields.replaceChildren(
+    carNumberRow(draft.assembly, carAssemblyFields),
+    node("p", "All values are in mm. Side gap is per wheel. Bore clearance is added to the axle diameter.", "hint"),
+  );
+}
+
+function showFit(report, label, message) {
+  const readout = byId("fit-report");
+  if (readout.dataset.report !== report) {
+    const rows = [];
+    for (const line of report.split("\n").slice(1)) {
+      const [metric, value] = line.trim().split(" — ", 2);
+      if (!value) continue;
+      const row = node("div");
+      row.append(node("dt", metric), node("dd", value));
+      rows.push(row);
+    }
+    readout.replaceChildren(...rows);
+    readout.dataset.report = report;
+  }
+  byId("fit-tag").textContent = label;
+  setStatus("fit-status", message);
+}
+
+function showCommittedFit() {
+  showFit(fitReport, dirty ? "Last build" : "Nominal", dirty
+    ? "Showing the last build. Check fit to test pending edits."
+    : "The current build passes the nominal fit checks.");
+}
 
 function renderFeature(keepOpen = false) {
   const fields = byId("fields");
@@ -323,8 +402,13 @@ function renderFeature(keepOpen = false) {
 }
 
 function renderPart(featureIndex = 0, keepOpen = false) {
-  const part = draft.parts[Number(partPicker.value)];
+  const index = Number(partPicker.value);
   measurePart();
+  if (isCar()) {
+    renderCarPart(measurements[index].kind);
+    return;
+  }
+  const part = draft.parts[index];
   featurePicker.replaceChildren();
   for (const [index, feature] of part.features.entries()) {
     addOption(featurePicker, index,
@@ -353,25 +437,49 @@ function applyModel(payload, preserve = false) {
   dirty = false;
   if (!preserve) {
     camera = null;
+    carPose = null;
     undoHistory.length = 0;
     redoHistory.length = 0;
+    byId("car-settings").open = false;
   }
+
+  const car = isCar();
+  byId("workspace-kicker").textContent = car ? "Assembly workshop" : "Art to CAD";
+  byId("workspace-title").textContent = car ? "Toy car assembly" : "Design workspace";
+  byId("workspace-description").textContent = car
+    ? "Select a part in the viewport, test its fit, and download it for printing."
+    : "Build a part from reference art, then refine the geometry in place.";
+  byId("source-title").textContent = car ? "Assembly fit" : "Reference & brief";
+  byId("reference-count").hidden = car;
+  byId("generate-form").hidden = car;
+  byId("car-fit").hidden = !car;
+  byId("fit-tag").hidden = !car;
+  byId("feature-selection").hidden = car;
+  byId("car-settings").hidden = !car;
+  byId("save-step").hidden = car;
+  byId("save-part").hidden = !car;
+  byId("save-parts").hidden = !car;
+  byId("format-note").textContent = car ? "Editable assembly · STL parts" : "Editable CAD projects · STEP exchange";
 
   byId("empty-view").hidden = true;
   viewer.hidden = false;
   viewer.srcdoc = payload.viewer;
-  byId("model-name").textContent = currentRecipe.name;
-  const count = currentRecipe.parts.length;
+  byId("model-name").textContent = car ? currentRecipe.assembly.name : currentRecipe.name;
+  const count = measurements.length;
   byId("part-count").textContent = count + (count === 1 ? " part" : " parts") + " · mm";
   byId("empty-inspector").hidden = true;
   dimensions.hidden = false;
 
   partPicker.replaceChildren();
-  for (const [index, part] of draft.parts.entries()) addOption(partPicker, index, part.name);
-  partPicker.value = String(draft.parts[previousPart] ? previousPart : 0);
+  for (const [index, part] of measurements.entries()) addOption(partPicker, index, part.name);
+  partPicker.value = String(measurements[previousPart] ? previousPart : 0);
   renderPart(previousFeature, preserve);
-  byId("assumptions").replaceChildren(...draft.assumptions.map(assumption => node("li", assumption)));
-  byId("assumption-panel").hidden = !draft.assumptions.length;
+  renderCarSettings();
+  const assumptions = car ? [] : draft.assumptions;
+  byId("assumptions").replaceChildren(...assumptions.map(assumption => node("li", assumption)));
+  byId("assumption-panel").hidden = !assumptions.length;
+  fitReport = car ? payload.fit : "";
+  if (car) showCommittedFit();
   setStatus("dimension-status", "Measurements reflect the last successful build.");
 }
 
@@ -379,7 +487,7 @@ window.addEventListener("message", event => {
   if (event.source !== viewer.contentWindow || event.origin !== "null") return;
   if (event.data?.type === "magtel-select-part") {
     const {index} = event.data;
-    if (Number.isInteger(index) && draft?.parts[index] && index !== Number(partPicker.value)) {
+    if (Number.isInteger(index) && measurements[index] && index !== Number(partPicker.value)) {
       partPicker.value = String(index);
       renderPart();
       refreshControls();
@@ -391,6 +499,14 @@ window.addEventListener("message", event => {
     if (direction === "undo" || direction === "redo") changeHistory(direction);
     return;
   }
+  if (event.data?.type === "magtel-car-pose" && isCar()) {
+    const {front, rear, explode} = event.data;
+    if ([front, rear, explode].every(Number.isFinite)
+        && front >= 0 && front <= 360 && rear >= 0 && rear <= 360 && explode >= 0 && explode <= 100) {
+      carPose = {type: "magtel-car-pose", front, rear, explode};
+    }
+    return;
+  }
   if (event.data?.type !== "magtel-camera") return;
   const {yaw, pitch, zoom} = event.data;
   if ([yaw, pitch, zoom].every(Number.isFinite) && Math.abs(yaw) <= 2 * Math.PI
@@ -400,6 +516,7 @@ window.addEventListener("message", event => {
 });
 viewer.addEventListener("load", () => {
   if (camera) viewer.contentWindow.postMessage(camera, "*");
+  if (carPose) viewer.contentWindow.postMessage(carPose, "*");
   if (currentRecipe) sendSelectedPart();
 });
 
@@ -411,6 +528,22 @@ function loadDemo() {
 }
 
 byId("load-demo").addEventListener("click", loadDemo);
+byId("load-car").addEventListener("click", () => {
+  run("car", "art-status", "Loading the toy car…", async () => {
+    applyModel(await request("api/car"));
+    setStatus("art-status", "");
+  });
+});
+
+byId("check-fit").addEventListener("click", () => {
+  if (!isCar()) return;
+  run("fit", "fit-status", "Checking the wheel, axle, and chassis clearances…", async () => {
+    const result = await request("api/fit", {recipe: draft});
+    if (dirty) showFit(result.fit, "Draft", "The draft passes the fit checks. Rebuild to apply these dimensions.");
+    else showCommittedFit();
+  });
+});
+
 byId("generate-form").addEventListener("submit", event => {
   event.preventDefault();
   const requestBrief = brief.value.trim();
@@ -467,9 +600,13 @@ discardButton.addEventListener("click", () => {
   draft = structuredClone(currentRecipe);
   dirty = false;
   renderPart(Number(featurePicker.value), true);
+  if (isCar()) {
+    renderCarSettings();
+    showCommittedFit();
+  }
   setStatus("dimension-status", "Pending edits discarded.");
   refreshControls();
-  featurePicker.focus();
+  (isCar() ? partPicker : featurePicker).focus();
 });
 
 document.addEventListener("keydown", event => {
@@ -492,16 +629,20 @@ projectFile.addEventListener("change", () => {
     } catch {
       throw new Error("Choose a MAGTEL project JSON file.");
     }
-    if (data?.format !== "magtel-art" || data.version !== 1 || data.units !== "mm" || !data.recipe) {
-      throw new Error("Choose a version 1 MAGTEL art project in millimeters.");
+    if (data?.format === carFormat) {
+      applyModel(await request("api/rebuild", {recipe: data}));
+    } else if (data?.format === "magtel-art" && data.version === 1 && data.units === "mm" && data.recipe) {
+      applyModel(await request("api/rebuild", {recipe: data.recipe}));
+    } else {
+      throw new Error("Choose a MAGTEL toy car or art project JSON file.");
     }
-    applyModel(await request("api/rebuild", {recipe: data.recipe}));
     setStatus("art-status", "Opened " + file.name + ".");
   });
 });
 
 function projectName() {
-  return currentRecipe.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "magtel-part";
+  const name = isCar() ? currentRecipe.assembly.name : currentRecipe.name;
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "magtel-project";
 }
 
 function download(blob, name) {
@@ -517,17 +658,38 @@ function download(blob, name) {
 
 byId("save-project").addEventListener("click", () => {
   if (!currentRecipe || busy || dirty) return;
-  const data = {format: "magtel-art", version: 1, units: "mm", recipe: currentRecipe};
-  download(new Blob([JSON.stringify(data, null, 2) + "\n"], {type: "application/json"}), projectName() + ".magtel-art.json");
+  const car = isCar();
+  const data = car ? currentRecipe : {format: "magtel-art", version: 1, units: "mm", recipe: currentRecipe};
+  const suffix = car ? ".magtel.json" : ".magtel-art.json";
+  download(new Blob([JSON.stringify(data, null, 2) + "\n"], {type: "application/json"}), projectName() + suffix);
   setStatus("dimension-status", "Editable project downloaded.");
 });
 
 byId("save-step").addEventListener("click", () => {
-  if (!currentRecipe || dirty) return;
+  if (!currentRecipe || dirty || isCar()) return;
   run("step", "dimension-status", "Preparing the STEP export…", async () => {
     const step = await request("api/step", {recipe: currentRecipe}, true);
     download(step, projectName() + ".step");
     setStatus("dimension-status", "STEP file downloaded.");
+  });
+});
+
+byId("save-part").addEventListener("click", () => {
+  if (!isCar() || dirty) return;
+  const part = measurements[Number(partPicker.value)].kind;
+  run("stl", "dimension-status", "Preparing the " + part + " STL…", async () => {
+    const file = await request("api/part", {recipe: currentRecipe, part}, true);
+    download(file, projectName() + "-" + part + ".stl");
+    setStatus("dimension-status", "Selected " + part + " STL downloaded.");
+  });
+});
+
+byId("save-parts").addEventListener("click", () => {
+  if (!isCar() || dirty) return;
+  run("parts", "dimension-status", "Packing the printable parts…", async () => {
+    const file = await request("api/parts", {recipe: currentRecipe}, true);
+    download(file, projectName() + "-parts.zip");
+    setStatus("dimension-status", "Parts ZIP downloaded. It includes quantities and assembly notes.");
   });
 });
 

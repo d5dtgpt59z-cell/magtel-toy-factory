@@ -269,7 +269,7 @@ def _parser() -> argparse.ArgumentParser:
     art_build.add_argument("file", metavar="PROJECT")
     art_build.add_argument("-o", "--output", required=True, metavar="FILE", help="write .step, .stl, or .html")
     art_build.add_argument("--force", action="store_true", help="replace an existing output file")
-    studio = commands.add_parser("studio", help="open the visual reference-art workspace in a browser")
+    studio = commands.add_parser("studio", help="open the visual workspace for reference art and toy cars")
     studio.add_argument("--no-open", action="store_true", help="print the local workspace address without opening it")
     studio.add_argument("--port", type=int, default=0, help="choose a local port (default: an available port)")
     edit = commands.add_parser("edit", help="describe changes to a saved design")

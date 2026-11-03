@@ -1,7 +1,9 @@
 """Exercise the workspace over HTTP without launching a browser or Codex."""
 
 import base64
+import io
 import json
+import struct
 import sys
 import threading
 import unittest
@@ -9,6 +11,7 @@ from http.client import HTTPConnection
 from importlib.util import find_spec
 from types import ModuleType
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from magtel.workspace import WorkspaceServer, _MAX_GENERATE_BYTES
 
@@ -109,6 +112,65 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["recipe"], RECIPE)
         self.assertTrue(staged)
         self.assertFalse(staged[0].exists())
+
+    def test_car_rebuild_updates_all_wheels_and_checks_draft_fit(self):
+        with patch("magtel.workspace.interpret_art") as provider:
+            status, _, body = self._request("GET", "api/car")
+            self.assertEqual(status, 200, body)
+            demo = json.loads(body)
+            recipe = demo["recipe"]
+            self.assertEqual(recipe["format"], "magtel-assembly")
+            self.assertEqual(len(demo["parts"]), 7)
+
+            recipe["assembly"]["wheel"]["diameter"] = 44
+            status, _, body = self._request("POST", "api/fit", {"recipe": recipe})
+            self.assertEqual(status, 200, body)
+            self.assertIn("Ground clearance below chassis — 16 mm", json.loads(body)["fit"])
+            status, _, body = self._request("POST", "api/rebuild", {"recipe": recipe})
+            self.assertEqual(status, 200, body)
+            edited = json.loads(body)
+            wheels = [part["size"] for part in edited["parts"] if part["kind"] == "wheel"]
+            self.assertEqual(wheels, [[44, 10, 44]] * 4)
+            self.assertEqual(edited["recipe"], recipe)
+
+            recipe["assembly"]["wheel"]["diameter"] = 60
+            for route in ("api/fit", "api/rebuild", "api/parts"):
+                with self.subTest(route=route):
+                    status, _, body = self._request("POST", route, {"recipe": recipe})
+                    self.assertEqual(status, 422, body)
+                    self.assertIn("wheelbase of at least 60.1 mm", json.loads(body)["error"])
+            provider.assert_not_called()
+
+    def test_car_exports_individual_print_parts_and_zip(self):
+        status, _, body = self._request("GET", "api/car")
+        self.assertEqual(status, 200, body)
+        recipe = json.loads(body)["recipe"]
+        recipe["assembly"]["wheel"]["diameter"] = 44
+
+        status, _, bundle = self._request("POST", "api/parts", {"recipe": recipe})
+        self.assertEqual(status, 200, bundle)
+        with ZipFile(io.BytesIO(bundle)) as archive:
+            for part, size, quantity in (
+                ("chassis", [80, 30, 12], 1), ("axle", [5.8, 5.8, 60], 2), ("wheel", [44, 44, 10], 4)
+            ):
+                with self.subTest(part=part):
+                    status, headers, body = self._request("POST", "api/part", {"recipe": recipe, "part": part})
+                    self.assertEqual(status, 200, body)
+                    self.assertEqual(headers["Content-Disposition"], f'attachment; filename="{part}.stl"')
+                    self.assertEqual(body, archive.read(f"{part}.stl"))
+                    self.assertIn(f"{quantity} × {part}.stl", archive.read("README.txt").decode())
+                    facets = struct.iter_unpack("<12fH", body[84:])
+                    vertices = [vertex for facet in facets for vertex in (facet[3:6], facet[6:9], facet[9:12])]
+                    axes = list(zip(*vertices))
+                    self.assertEqual([round(max(axis) - min(axis), 4) for axis in axes], size)
+                    self.assertEqual(min(axes[2]), 0.0)
+
+        status, _, _ = self._request("POST", "api/part", {"recipe": recipe, "part": "../wheel"})
+        self.assertEqual(status, 422)
+        status, _, _ = self._request(
+            "POST", "api/part", {"recipe": recipe, "part": "wheel"}, headers={"Origin": "https://other.example"}
+        )
+        self.assertEqual(status, 403)
 
     @unittest.skipUnless(find_spec("build123d"), "requires the optional CAD engine")
     def test_dimension_edit_rebuilds_preview_and_step_without_the_provider(self):

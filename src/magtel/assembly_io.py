@@ -27,15 +27,16 @@ def load_design(path: Path) -> ToySpec | CarSpec:
     """Open an existing MAGTEL part or car assembly from its format marker."""
     data = read_json(path, label="MAGTEL design")
     if isinstance(data, dict) and data.get("format") == FORMAT:
-        return _decode_car(data, path)
+        return decode_car(data, path)
     return decode_part(data, path)
 
 
 def load_car(path: Path) -> CarSpec:
-    return _decode_car(read_json(path, label="MAGTEL assembly"), path)
+    return decode_car(read_json(path, label="MAGTEL assembly"), path)
 
 
-def _decode_car(data: object, path: Path) -> CarSpec:
+def decode_car(data: object, path: Path) -> CarSpec:
+    """Validate a parsed CLI or Studio car project."""
     if not isinstance(data, dict) or data.get("format") != FORMAT:
         raise DesignError(f"{path} is not a MAGTEL assembly. Open an editable car file.")
     if type(data.get("version")) is not int or data["version"] != VERSION:
@@ -54,15 +55,19 @@ def _decode_car(data: object, path: Path) -> CarSpec:
     return CarSpec(**values).validate()
 
 
-def save_car(spec: CarSpec, path: Path, *, force: bool = False) -> None:
+def car_project_data(spec: CarSpec) -> dict[str, object]:
+    """Return the editable project shared by CLI and Studio."""
     spec.validate()
     parameters: dict[str, object] = {"kind": "car"}
     for field in _CAR_FIELDS:
         value = getattr(spec, field)
         if value is not None:
             parameters[field] = part_parameters(value) if isinstance(value, ToySpec) else value
-    data = {"format": FORMAT, "version": VERSION, "units": "mm", "assembly": parameters}
-    write_json(data, path, force=force)
+    return {"format": FORMAT, "version": VERSION, "units": "mm", "assembly": parameters}
+
+
+def save_car(spec: CarSpec, path: Path, *, force: bool = False) -> None:
+    write_json(car_project_data(spec), path, force=force)
 
 
 def export_car(spec: CarSpec, path: Path, *, force: bool = False) -> None:

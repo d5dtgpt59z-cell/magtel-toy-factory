@@ -110,6 +110,33 @@
     .embedded .actions { padding: .45rem .55rem; gap: .3rem; }
     .embedded .actions button { min-width: 2.25rem; min-height: 2.25rem; padding: .15rem .45rem; }
     .embedded .hint { padding: .35rem .65rem; font-size: .7rem; }
+    .car-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem .95rem;
+      padding: .5rem .65rem .3rem;
+      border-top: 1px solid #33434b;
+      color: #e6e9df;
+      background: #162630;
+    }
+    .car-controls[hidden] { display: none; }
+    .car-controls section { flex: 1 1 7.7rem; min-width: 0; }
+    .car-controls .range-row { align-items: center; gap: .3rem; min-height: 1.65rem; font-size: .72rem; }
+    .car-controls .range-value { color: #f2cd81; font: .72rem var(--mono); }
+    .car-controls input[type="range"] { display: block; min-height: 1.25rem; margin: .1rem 0 0; }
+    .car-controls input { accent-color: var(--accent); }
+    .car-controls .range-labels { display: none; }
+    .car-controls button {
+      margin-left: auto;
+      padding: .15rem .35rem;
+      border: 1px solid #566a72;
+      border-radius: 3px;
+      background: transparent;
+      color: #f2f1e5;
+      cursor: pointer;
+    }
+    .car-controls button:hover { background: #29414b; }
+    .car-controls :focus-visible { outline-color: var(--accent); }
     .embedded .panel {
       position: absolute;
       inset: auto .55rem 5.6rem auto;
@@ -118,6 +145,7 @@
       overflow: auto;
       box-shadow: 0 .5rem 1.7rem #101c2480;
     }
+    .embedded-car .panel { inset: 2.65rem .55rem auto auto; max-height: calc(100% - 12rem); }
   </style>
 </head>
 <body>
@@ -148,13 +176,31 @@
           <button type="button" data-camera="far" aria-label="Zoom out" title="Zoom out">−</button>
           <button type="button" data-camera="reset" class="reset">Reset view</button>
         </div>
+        <div class="car-controls" id="car-controls" role="group" aria-label="Assembly pose" hidden>
+          <section aria-label="Front axle">
+            <div class="range-row">
+              <label for="front-axle-angle">Front axle</label>
+              <span class="range-value" id="front-axle-value" aria-hidden="true">0°</span>
+              <button type="button" id="spin-front-axle" aria-label="Spin front axle">Spin</button>
+            </div>
+            <input type="range" id="front-axle-angle" aria-label="Front axle angle" min="0" max="360" value="0">
+          </section>
+          <section aria-label="Rear axle">
+            <div class="range-row">
+              <label for="rear-axle-angle">Rear axle</label>
+              <span class="range-value" id="rear-axle-value" aria-hidden="true">0°</span>
+              <button type="button" id="spin-rear-axle" aria-label="Spin rear axle">Spin</button>
+            </div>
+            <input type="range" id="rear-axle-angle" aria-label="Rear axle angle" min="0" max="360" value="0">
+          </section>
+        </div>
         <p class="hint" id="controls-hint">Drag to orbit. Scroll or pinch to zoom. With the viewport focused, use arrow keys, + or −, and Home to reset.</p>
       </div>
       <aside class="panel" aria-label="Design information and display options">
         <section id="explode-controls" hidden>
           <div class="range-row">
             <label for="explode">Explode assembly</label>
-            <output id="explosion" for="explode">0%</output>
+            <output class="range-value" id="explosion" for="explode">0%</output>
           </div>
           <input type="range" id="explode" min="0" max="100" value="0" aria-valuetext="Assembled">
           <div class="range-labels"><span>Assembled</span><span>Exploded</span></div>
@@ -177,7 +223,17 @@
 
     const data = JSON.parse(document.getElementById("preview-data").textContent);
     const embedded = data.embed === true && window.parent !== window;
+    const carControls = embedded && data.axle_pivots ? document.getElementById("car-controls") : null;
+    const axles = carControls ? ["front", "rear"].map(name => ({
+      name,
+      angle: 0,
+      spinning: false,
+      slider: document.getElementById(name + "-axle-angle"),
+      value: document.getElementById(name + "-axle-value"),
+      button: document.getElementById("spin-" + name + "-axle"),
+    })) : [];
     if (embedded) document.documentElement.classList.add("embedded");
+    if (carControls) document.documentElement.classList.add("embedded-car");
     const canvas = document.getElementById("model");
     const notice = document.getElementById("notice");
     const slider = document.getElementById("explode");
@@ -194,6 +250,8 @@
     let exploded = 0;
     let framePending = false;
     let cameraPending = false;
+    let lastSpinTime = null;
+    let lastPoseMessage = 0;
     let selectedPart = embedded && data.parts.length ? 0 : -1;
     let draw = null;
     let pickPart = null;
@@ -217,7 +275,8 @@
     }
     if (embedded) {
       document.getElementById("controls-hint").textContent =
-        "Click a part to select it. Drag to orbit. Scroll or pinch to zoom.";
+        "Click a part to select it. Drag to orbit. Scroll or pinch to zoom."
+        + (carControls ? " Index marks show axle rotation." : "");
       const panel = partsList.closest(".panel");
       panel.hidden = true;
       panel.id = "viewport-parts";
@@ -249,6 +308,20 @@
           }
           return;
         }
+        if (state.type === "magtel-car-pose" && carControls) {
+          if ([state.front, state.rear].every(angle => Number.isFinite(angle) && angle >= 0 && angle <= 360)
+              && Number.isFinite(state.explode) && state.explode >= 0 && state.explode <= 100) {
+            for (const axle of axles) {
+              axle.angle = state[axle.name];
+              setSpinning(axle, false);
+              updateAxleControl(axle);
+            }
+            slider.value = state.explode;
+            updateExplosion();
+            schedule();
+          }
+          return;
+        }
         if (state.type !== "magtel-camera"
             || ![state.yaw, state.pitch, state.zoom].every(Number.isFinite)
             || Math.abs(state.yaw) > 2 * Math.PI || Math.abs(state.pitch) > 1.48
@@ -257,13 +330,77 @@
         schedule();
       });
     }
+    if (carControls) {
+      carControls.prepend(document.getElementById("explode-controls"));
+      carControls.hidden = false;
+      for (const axle of axles) {
+        axle.slider.addEventListener("input", () => {
+          setSpinning(axle, false);
+          axle.angle = Number(axle.slider.value);
+          updateAxleControl(axle);
+          poseChanged();
+          schedule();
+        });
+        axle.button.addEventListener("click", () => {
+          setSpinning(axle, !axle.spinning);
+          poseChanged();
+          schedule();
+        });
+        updateAxleControl(axle);
+      }
+    }
+
+    function setSpinning(axle, spinning) {
+      axle.spinning = spinning;
+      const action = spinning ? "Pause" : "Spin";
+      axle.button.textContent = action;
+      axle.button.setAttribute("aria-label", action + " " + axle.name + " axle");
+    }
+
+    function updateAxleControl(axle) {
+      const angle = Math.round(axle.angle);
+      axle.slider.value = angle;
+      axle.slider.setAttribute("aria-valuetext", angle + " degrees");
+      axle.value.textContent = angle + "°";
+    }
+
+    function poseChanged() {
+      if (!carControls) return;
+      window.parent.postMessage({
+        type: "magtel-car-pose", front: axles[0].angle, rear: axles[1].angle, explode: Number(slider.value),
+      }, "*");
+    }
+
+    function advanceSpin(time) {
+      const spinning = axles.filter(axle => axle.spinning);
+      if (!spinning.length) {
+        lastSpinTime = null;
+        return false;
+      }
+      // A background tab should resume from the last visible angle.
+      const elapsed = lastSpinTime === null ? 0 : Math.min(time - lastSpinTime, 50);
+      lastSpinTime = time;
+      for (const axle of spinning) {
+        axle.angle = (axle.angle + elapsed * .18) % 360;
+        updateAxleControl(axle);
+      }
+      if (time - lastPoseMessage >= 100) {
+        lastPoseMessage = time;
+        poseChanged();
+      }
+      return true;
+    }
 
     function schedule() {
       if (draw === null || framePending) return;
       framePending = true;
-      requestAnimationFrame(() => {
+      requestAnimationFrame(time => {
         framePending = false;
-        if (draw) draw();
+        if (draw) {
+          const spinning = advanceSpin(time);
+          draw();
+          if (spinning) schedule();
+        }
       });
     }
 
@@ -275,6 +412,10 @@
       slider.disabled = true;
       for (const button of buttons) button.disabled = true;
       for (const checkbox of visibility) checkbox.disabled = true;
+      for (const axle of axles) {
+        axle.button.disabled = true;
+        axle.slider.disabled = true;
+      }
     }
 
     function shader(type, source) {
@@ -316,30 +457,43 @@
         attribute vec3 aNormal;
         uniform vec3 uOffset, uTarget, uRight, uUp;
         uniform mediump vec3 uToward;
-        uniform vec2 uScale;
+        uniform vec2 uScale, uPivot, uRotation;
         uniform float uDepth;
         varying mediump vec3 vNormal;
+        varying mediump vec2 vAxle;
+        vec3 rotateAxle(vec3 value) {
+          return vec3(uRotation.x * value.x + uRotation.y * value.z, value.y,
+            uRotation.x * value.z - uRotation.y * value.x);
+        }
         void main() {
-          vec3 p = aPosition + uOffset - uTarget;
+          vec3 pivot = vec3(uPivot.x, 0.0, uPivot.y);
+          vec3 p = rotateAxle(aPosition - pivot) + pivot + uOffset - uTarget;
           gl_Position = vec4(dot(p, uRight) / uScale.x, dot(p, uUp) / uScale.y,
             -dot(p, uToward) / uDepth, 1.0);
-          vNormal = aNormal;
+          vNormal = rotateAxle(aNormal);
+          vAxle = aPosition.xz - uPivot;
         }`);
       const fragment = shader(gl.FRAGMENT_SHADER, `
         precision mediump float;
         varying mediump vec3 vNormal;
-        uniform vec3 uColor;
+        varying mediump vec2 vAxle;
+        uniform vec3 uColor, uMark;
         uniform mediump vec3 uToward;
         uniform bool uLit;
         void main() {
           float light = 1.0;
+          vec3 color = uColor;
           if (uLit) {
             vec3 n = normalize(vNormal);
             vec3 key = normalize(vec3(0.25, 0.45, 1.0));
             light = 0.40 + 0.43 * max(dot(n, key), 0.0)
               + 0.17 * max(dot(n, uToward), 0.0);
+            if (abs(n.y) > 0.99 && abs(vAxle.x) < uMark.z
+                && vAxle.y > uMark.x && vAxle.y < uMark.y) {
+              color = vec3(1.0, 0.93, 0.73);
+            }
           }
-          gl_FragColor = vec4(uColor * light, 1.0);
+          gl_FragColor = vec4(color * light, 1.0);
         }`);
       const program = gl.createProgram();
       gl.attachShader(program, vertex);
@@ -359,7 +513,7 @@
       const position = gl.getAttribLocation(program, "aPosition");
       const normal = gl.getAttribLocation(program, "aNormal");
       const uniform = Object.fromEntries(
-        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit"]
+        ["Offset", "Target", "Right", "Up", "Toward", "Scale", "Depth", "Color", "Lit", "Pivot", "Rotation", "Mark"]
           .map(name => [name, gl.getUniformLocation(program, "u" + name)])
       );
       const low = [Infinity, Infinity, Infinity];
@@ -371,7 +525,12 @@
           low[axis] = Math.min(low[axis], v[i]);
           high[axis] = Math.max(high[axis], v[i]);
         }
-        return {position: buffer(v), normal: buffer(normals(v)), count: v.length / 3};
+        const axle = axles.find(item => item.name === part.axle);
+        return {
+          position: buffer(v), normal: buffer(normals(v)), count: v.length / 3,
+          axle, pivot: axle ? data.axle_pivots[axle.name] : [0, 0],
+          mark: axle ? part.mark : [0, 0, 0],
+        };
       });
       const target = low.map((value, axis) => (value + high[axis]) / 2);
       let radius = 0;
@@ -458,7 +617,11 @@
               ? part.color.map((value, axis) => value * .58 + [1, .78, .33][axis] * .42)
               : part.color;
             gl.uniform3fv(uniform.Color, color);
+            gl.uniform3fv(uniform.Mark, object.mark);
           }
+          const radians = (object.axle?.angle || 0) * Math.PI / 180;
+          gl.uniform2fv(uniform.Pivot, object.pivot);
+          gl.uniform2f(uniform.Rotation, Math.cos(radians), Math.sin(radians));
           gl.uniform3f(uniform.Offset, part.explode[0] * exploded, part.explode[1] * exploded, part.explode[2] * exploded);
           gl.drawArrays(gl.TRIANGLES, 0, object.count);
         });
@@ -505,6 +668,8 @@
         gl.uniform1i(uniform.Lit, 0);
         gl.uniform3f(uniform.Color, 0.18, 0.25, 0.29);
         gl.uniform3f(uniform.Offset, 0, 0, 0);
+        gl.uniform2f(uniform.Pivot, 0, 0);
+        gl.uniform2f(uniform.Rotation, 1, 0);
         gl.drawArrays(gl.LINES, 0, grid.length / 3);
 
         drawObjects(false);
@@ -587,10 +752,14 @@
       event.preventDefault();
       camera[keys[event.key]]();
     });
-    slider.addEventListener("input", () => {
+    function updateExplosion() {
       exploded = Number(slider.value) / 100;
       output.value = slider.value + "%";
       slider.setAttribute("aria-valuetext", exploded ? output.value + " exploded" : "Assembled");
+    }
+    slider.addEventListener("input", () => {
+      updateExplosion();
+      poseChanged();
       schedule();
     });
     canvas.addEventListener("wheel", (event) => {

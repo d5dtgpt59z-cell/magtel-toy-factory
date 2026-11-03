@@ -109,6 +109,13 @@
     .hint { color: var(--muted); font-size: .72rem; line-height: 1.4; margin: .5rem 0 0; }
     .status { min-height: 1.1rem; margin: .55rem 0 0; font-size: .74rem; color: #455f5b; overflow-wrap: anywhere; }
     .status.error { color: #9c3b28; }
+    #art-status { margin: 0; padding: 0 .85rem .65rem; }
+    #art-status:empty { display: none; }
+    .fit-readout { margin: .65rem 0 0; border-block: 1px solid var(--line); }
+    .fit-readout div { padding: .45rem 0; }
+    .fit-readout div + div { border-top: 1px solid #e5e4da; }
+    .fit-readout dt { color: var(--muted); font-size: .72rem; }
+    .fit-readout dd { margin: .12rem 0 0; font: 700 .72rem/1.35 var(--mono); overflow-wrap: anywhere; }
     .preview { background: var(--night); border-color: #2d444b; color: #e6eeea; display: flex; flex-direction: column; }
     .preview-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .7rem .85rem; border-bottom: 1px solid #36494e; }
     .preview-top h2 { margin: 0; font-size: .88rem; letter-spacing: -.01em; }
@@ -158,6 +165,7 @@
     .history-actions { display: flex; gap: .35rem; margin-top: .4rem; }
     .history-actions .button { flex: 1; }
     #discard-edits { margin-top: .4rem; }
+    #save-part { margin-top: .55rem; }
     .page-foot { display: flex; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; color: var(--muted); font: .66rem var(--mono); margin-top: .85rem; }
     .skip-link { position: absolute; top: -10rem; left: 1rem; padding: .5rem .8rem; background: var(--panel); color: var(--ink); z-index: 2; }
     .skip-link:focus { top: 1rem; }
@@ -191,6 +199,7 @@
       <div><strong>MAGTEL</strong><small>Toy Factory</small></div>
     </div>
     <nav class="masthead-actions" aria-label="Project actions">
+      <button class="button light" id="load-car" type="button">Load toy car</button>
       <button class="button light" id="load-demo" type="button">Load example</button>
       <button class="button light" id="open-project" type="button">Open project</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden>
@@ -199,22 +208,24 @@
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3 3 3 3-3M3 12v2h10v-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Download STEP
       </button>
+      <button class="button primary" id="save-parts" type="button" hidden disabled>Download parts ZIP</button>
     </nav>
   </header>
   <main id="main">
     <div class="intro">
       <div>
-        <p class="overline">Art to CAD</p>
-        <h1>Design workspace</h1>
-        <p>Build a part from reference art, then refine the geometry in place.</p>
+        <p class="overline" id="workspace-kicker">Art to CAD</p>
+        <h1 id="workspace-title">Design workspace</h1>
+        <p id="workspace-description">Build a part from reference art, then refine the geometry in place.</p>
       </div>
       <span class="workcell">Local workspace</span>
     </div>
     <div class="layout">
       <section class="panel" aria-labelledby="art-title">
         <div class="panel-heading">
-          <h2 id="art-title"><span class="panel-index" aria-hidden="true">01</span> Reference &amp; brief</h2>
+          <h2 id="art-title"><span class="panel-index" aria-hidden="true">01</span> <span id="source-title">Reference &amp; brief</span></h2>
           <span class="unit-tag" id="reference-count">0 / 4</span>
+          <span class="unit-tag" id="fit-tag" hidden>Nominal</span>
         </div>
         <form id="generate-form" class="panel-content">
           <input id="art-files" type="file" accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
@@ -231,8 +242,14 @@
           </div>
           <button type="submit" class="button primary full" id="generate" disabled>Generate model</button>
           <p class="hint">Generate sends the selected art and brief to Codex. Dimension edits rebuild locally.</p>
-          <p id="art-status" class="status" role="status" aria-live="polite"></p>
         </form>
+        <div class="panel-content" id="car-fit" hidden>
+          <button class="button full" id="check-fit" type="button" disabled>Check fit</button>
+          <p id="fit-status" class="status" role="status" aria-live="polite"></p>
+          <dl class="fit-readout" id="fit-report" aria-label="Calculated clearances"></dl>
+          <p class="hint">These clearances come from the design. Check them on a test print.</p>
+        </div>
+        <p id="art-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="preview" aria-labelledby="preview-title">
@@ -264,8 +281,12 @@
           <form id="dimensions" novalidate hidden>
             <dl class="measured" id="measured" aria-label="Measured part dimensions"></dl>
             <label class="picker" for="part-picker"><span class="field-label">Part</span><select id="part-picker"></select></label>
-            <label class="picker" for="feature-picker"><span class="field-label">Feature</span><select id="feature-picker"></select></label>
+            <label class="picker" id="feature-selection" for="feature-picker"><span class="field-label">Feature</span><select id="feature-picker"></select></label>
             <div class="editor" id="fields"></div>
+            <details class="editor" id="car-settings" hidden>
+              <summary>Assembly dimensions</summary>
+              <div id="assembly-fields"></div>
+            </details>
             <details id="assumption-panel" hidden>
               <summary>Model assumptions</summary>
               <ul class="assumptions" id="assumptions"></ul>
@@ -277,13 +298,14 @@
                 <button class="button" id="undo" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled>Undo</button>
                 <button class="button" id="redo" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>Redo</button>
               </div>
+              <button class="button full" id="save-part" type="button" hidden disabled>Download selected STL</button>
               <p id="dimension-status" class="status" role="status" aria-live="polite">Measurements reflect the last successful build.</p>
             </div>
           </form>
         </div>
       </section>
     </div>
-    <footer class="page-foot"><span>MAGTEL TOY FACTORY / MODEL SHOP</span><span>Editable CAD projects · STEP exchange</span></footer>
+    <footer class="page-foot"><span>MAGTEL TOY FACTORY / MODEL SHOP</span><span id="format-note">Editable CAD projects · STEP exchange</span></footer>
     <noscript><p>Enable JavaScript to use the design workspace.</p></noscript>
   </main>
 </body>

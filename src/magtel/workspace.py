@@ -1,4 +1,4 @@
-"""Loopback browser workspace for the MAGTEL art-to-CAD workflow."""
+"""Loopback browser workspace for editing art-derived parts and toy cars."""
 
 import base64
 import json
@@ -21,11 +21,16 @@ from .art_provider import (
     _MAX_TOTAL_IMAGE_BYTES,
     interpret_art,
 )
+from .assembly_io import FORMAT as CAR_FORMAT
+from .assembly_io import car_project_data, decode_car, export_parts
+from .mesh import stl_bytes
 from .model import DesignError
-from .preview import write_preview_data
+from .preview import car_preview_data, write_preview_data
+from .project import MAX_PART_FILE_SIZE
 
 _MAX_GENERATE_BYTES = 4 * ((_MAX_TOTAL_IMAGE_BYTES + 2) // 3) + 64 * 1024
 _MAX_PREVIEW_TRIANGLES = 200_000
+_CAR_PROJECT = Path("Car project")
 _CONTENT_POLICY = (
     "default-src 'none'; script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; "
@@ -87,12 +92,27 @@ def _generate_recipe(data: dict, directory: Path) -> dict:
 
 
 def _model_response(recipe, directory: Path) -> dict:
-    assembly = build_art(recipe)
-    viewer, parts = art_preview_data(recipe, assembly, triangle_limit=_MAX_PREVIEW_TRIANGLES)
+    result = {}
+    if isinstance(recipe, dict) and recipe.get("format") == CAR_FORMAT:
+        car = decode_car(recipe, _CAR_PROJECT)
+        result["fit"] = car.fit_report()
+        viewer = car_preview_data(car)
+        parts = []
+        for part in viewer["parts"]:
+            axes = [part["vertices"][index::3] for index in range(3)]
+            parts.append({
+                "name": part["name"],
+                "kind": part["kind"],
+                "size": [round(max(axis) - min(axis), 6) for axis in axes],
+            })
+        recipe = car_project_data(car)
+    else:
+        assembly = build_art(recipe)
+        viewer, parts = art_preview_data(recipe, assembly, triangle_limit=_MAX_PREVIEW_TRIANGLES)
     viewer["embed"] = True
     path = directory / "preview.html"
     write_preview_data(viewer, path)
-    return {"recipe": recipe, "viewer": path.read_text(encoding="utf-8"), "parts": parts}
+    return {"recipe": recipe, "viewer": path.read_text(encoding="utf-8"), "parts": parts, **result}
 
 
 class WorkspaceServer(ThreadingHTTPServer):
@@ -197,8 +217,9 @@ class _WorkspaceHandler(BaseHTTPRequestHandler):
             asset, media_type = assets[route]
             self._send(HTTPStatus.OK, media_type, files("magtel").joinpath(asset).read_bytes())
             return
-        if route == "api/demo":
-            recipe = json.loads(files("magtel").joinpath("workspace_demo.json").read_text(encoding="utf-8"))
+        demos = {"api/demo": "workspace_demo.json", "api/car": "workspace_car.json"}
+        if route in demos:
+            recipe = json.loads(files("magtel").joinpath(demos[route]).read_text(encoding="utf-8"))
             with self.server.cad, TemporaryDirectory(prefix="magtel-workspace-") as temp:
                 result = _model_response(recipe, Path(temp))
             self._json(HTTPStatus.OK, result)
@@ -226,6 +247,9 @@ class _WorkspaceHandler(BaseHTTPRequestHandler):
             finally:
                 self.server.generation.release()
             return
+        if route in ("api/fit", "api/part", "api/parts"):
+            self._car_action(route)
+            return
         if route not in ("api/rebuild", "api/step"):
             raise _RequestError(HTTPStatus.NOT_FOUND, "Workspace route not found.")
         recipe = _recipe_request(self._read_request(MAX_ART_FILE_SIZE))
@@ -241,6 +265,27 @@ class _WorkspaceHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, result)
         else:
             self._send(HTTPStatus.OK, "application/step", payload, download="magtel-model.step")
+
+    def _car_action(self, route: str):
+        data = self._read_request(MAX_PART_FILE_SIZE)
+        if route == "api/part":
+            part = data.get("part")
+            if data.keys() != {"recipe", "part"} or part not in ("chassis", "axle", "wheel"):
+                raise DesignError("Choose a chassis, axle, or wheel to export.")
+            car = decode_car(data["recipe"], _CAR_PROJECT)
+            mesh = car.part_meshes()[part]
+            self._send(HTTPStatus.OK, "model/stl", stl_bytes(mesh), download=f"{part}.stl")
+            return
+
+        car = decode_car(_recipe_request(data), _CAR_PROJECT)
+        if route == "api/fit":
+            self._json(HTTPStatus.OK, {"fit": car.fit_report()})
+            return
+        with TemporaryDirectory(prefix="magtel-workspace-") as temp:
+            path = Path(temp) / "parts.zip"
+            export_parts(car, path)
+            payload = path.read_bytes()
+        self._send(HTTPStatus.OK, "application/zip", payload, download="car-parts.zip")
 
 
 def run_workspace(*, open_browser: bool = True, port: int = 0) -> int:

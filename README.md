@@ -131,8 +131,21 @@ Click a part in the viewport to select it in the dimension inspector. Change
 its feature dimensions and choose **Rebuild model**. The geometry updates in
 place and keeps your camera angle. Use **Undo** and **Redo** to compare
 successful rebuilds. Save a MAGTEL art project to continue later, or download
-STEP to open the exact solids in another CAD tool. Keep the terminal running
-while you work.
+STEP to open the exact solids in another CAD tool.
+
+Choose **Load toy car** to start with a complete car, or use **Open project**
+to open a completed `magtel assemble` project. Click a wheel in the viewport
+to edit its diameter, thickness, or bore. All four wheels share a design and
+both axles share a design. The assembly controls also let you adjust the
+wheelbase and clearances. Use **Check fit** to see axle clearance and ground
+clearance, then rebuild to apply your changes. The viewport lets you turn
+the front and rear axles independently and explode the assembly.
+
+Download an STL of the selected part, or save a ZIP with all three part
+designs and print quantities. These exports use the rebuilt dimensions and
+millimeter units, regardless of the current viewport pose. **Save JSON**
+keeps the assembly editable in both Studio and the CLI. Keep the terminal
+running while you work.
 
 ## Inspect a design in 3D
 
