@@ -1,12 +1,12 @@
 """Faceted prototype bodies that share the same flat chassis mounting surface."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .mesh import Point, Triangle, _quad
 from .model import DesignError
 
-BODY_PROFILES = ("plain", "lunar", "racer", "truck")
+BODY_PROFILES = ("plain", "lunar", "racer", "truck", "stream")
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class BodyPart:
     name: str
     role: str
     faces: list[Triangle]
+    accent_faces: frozenset[int] = frozenset()
 
 
 def body_parts(profile: str, length: float, width: float, top_z: float = 0) -> tuple[BodyPart, ...]:
@@ -28,12 +29,14 @@ def body_parts(profile: str, length: float, width: float, top_z: float = 0) -> t
         parts = _racer(length, width, scale)
     elif profile == "truck":
         parts = _truck(length, width, scale)
+    elif profile == "stream":
+        parts = (_stream(length, width, scale),)
     else:
         raise DesignError("Choose a supported body profile.")
     if not top_z:
         return parts
     return tuple(
-        BodyPart(part.id, part.name, part.role, [tuple((x, y, z + top_z) for x, y, z in face) for face in part.faces])
+        replace(part, faces=[tuple((x, y, z + top_z) for x, y, z in face) for face in part.faces])
         for part in parts
     )
 
@@ -78,6 +81,71 @@ def _solid(*rings: list[Point]) -> list[Triangle]:
         _band(faces, lower, upper)
     _cap(faces, rings[-1], top=True)
     return faces
+
+
+# Stations from the tapered tail to the low nose. Width and crown height are ratios.
+_STREAM_STATIONS = (0.0, 0.08, 0.20, 0.32, 0.43, 0.53, 0.63, 0.75, 0.88, 1.0)
+_STREAM_WIDTH = (0.19, 0.46, 0.77, 0.85, 0.88, 0.83, 0.74, 0.60, 0.45, 0.11)
+_STREAM_CROWN = (0.032, 0.070, 0.141, 0.253, 0.345, 0.339, 0.239, 0.123, 0.075, 0.034)
+
+
+def _stream_curve(u: float, values: tuple[float, ...]) -> float:
+    """Interpolate the stations with monotone cubic tangents."""
+    def slope(i: int) -> float:
+        return (values[i + 1] - values[i]) / (_STREAM_STATIONS[i + 1] - _STREAM_STATIONS[i])
+
+    def tangent(i: int) -> float:
+        if i == 0:
+            return slope(0)
+        if i == len(values) - 1:
+            return slope(i - 1)
+        before, after = slope(i - 1), slope(i)
+        return 2 * before * after / (before + after) if before * after > 0 else 0.0
+
+    j = next(i for i, station in enumerate(_STREAM_STATIONS[1:]) if u <= station)
+    h = _STREAM_STATIONS[j + 1] - _STREAM_STATIONS[j]
+    t = (u - _STREAM_STATIONS[j]) / h
+    return ((1 + 2 * t) * (1 - t) ** 2 * values[j]
+            + t * (1 - t) ** 2 * h * tangent(j)
+            + t ** 2 * (3 - 2 * t) * values[j + 1]
+            - t ** 2 * (1 - t) * h * tangent(j + 1))
+
+
+def _stream(length: float, width: float, scale: float) -> BodyPart:
+    """Loft one continuous speedform with a flat underside and painted canopy."""
+    slices, flank, glass = 52, 8, 10
+    canopy_start, canopy_end = 14, 34
+    rings = []
+    for index in range(slices + 1):
+        u = index / slices
+        x = (0.945 * u - 0.47) * length
+        half = 0.5 * width * _stream_curve(u, _STREAM_WIDTH)
+        crown = scale * _stream_curve(u, _STREAM_CROWN)
+        shoulder = crown * 0.22
+        t = min(1.0, max(0.0, (index - canopy_start) / (canopy_end - canopy_start)))
+        opening = 0.060 + 0.650 * math.sin(math.pi * t) ** 0.8
+        right, left = math.pi / 2 - opening, math.pi / 2 + opening
+        angles = (
+            [right * step / flank for step in range(flank)]
+            + [right + (left - right) * step / glass for step in range(glass)]
+            + [left + (math.pi - left) * step / flank for step in range(flank + 1)]
+        )
+        ring = [(x, -half * 0.90, 0), (x, half * 0.90, 0)]
+        for angle in angles:
+            rise = math.sin(angle) ** 0.82
+            ring.append((x, half * math.cos(angle), shoulder + (crown - shoulder) * rise))
+        rings.append(ring)
+
+    faces: list[Triangle] = []
+    paint: set[int] = set()
+    _cap(faces, rings[0], top=False)
+    for index, (lower, upper) in enumerate(zip(rings, rings[1:])):
+        if canopy_start <= index < canopy_end:
+            begin = len(faces) + 2 * (2 + flank)
+            paint.update(range(begin, begin + 2 * glass))
+        _band(faces, lower, upper)
+    _cap(faces, rings[-1], top=True)
+    return BodyPart("body-stream", "Streamlined monocoque", "shell", faces, frozenset(paint))
 
 
 def _lunar(length: float, width: float, scale: float) -> tuple[BodyPart, ...]:
