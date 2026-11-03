@@ -60,7 +60,7 @@ class DreamWorkflowTests(unittest.TestCase):
 
         status, _, options = self.request("/api/variants", {"design": edited["design"]})
         self.assertEqual(status, 200)
-        self.assertEqual(len(options["variants"]), 3)
+        self.assertEqual(len(options["variants"]), 5)
         variant = options["variants"][0]
         self.assertEqual(variant["wheel_bore"], design["wheel_bore"])
         self.assertNotEqual(variant["wheel_profile"], design["wheel_profile"])

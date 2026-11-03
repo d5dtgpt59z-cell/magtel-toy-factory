@@ -27,7 +27,8 @@ studio and exports work without internet access after installation.
    ramp test with a barrier. The
    playtest shows motion, an estimated impact response, and a stability
    estimate alongside the model.
-4. **Remix.** Swap wheel profiles and colors. Variants keep the wheel bore,
+4. **Remix.** Try Off-Road, Racing, Monster Truck, Lunar Explorer, or Cartoon
+   Vehicle wheel profiles and palettes. Variants keep the wheel bore,
    mounting width, and outside diameter, so they use the same axle and chassis.
 5. **Export.** Download an invention ZIP and extract it. Open
    `invention-sheet.html` to view the hero render, exploded view, overall and

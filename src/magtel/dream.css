@@ -248,7 +248,7 @@ select { width: 100%; min-height: 34px; padding: 6px 7px; font-size: 13px; font-
 .exports .module-head { flex-wrap: wrap; align-items: flex-start; }
 .module-head h2 { font-size: clamp(22px, 2.3vw, 30px); }
 .module-head p:not(.eyebrow) { color: var(--muted); margin-top: 6px; font-size: 13px; line-height: 1.45; }
-.variant-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.variant-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
 .variant-list:empty { margin: 0; }
 .variant-card { display: grid; gap: 5px; min-width: 0; padding: 9px; text-align: left; background: #f8faf3; }
 .variant-card:hover:not(:disabled) { background: #e8eee6; }
@@ -300,7 +300,6 @@ footer {
   .inspector { border-left: 0; border-top: 1px solid var(--line); }
   .workspace-head { padding: 12px; min-height: 73px; }
   .part-fields { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
-  .variant-list { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .module-head { flex-wrap: wrap; }
   .variant-card { min-height: 76px; }
 }

@@ -44,6 +44,8 @@ const profileLabels = {
   beveled: "Beveled tread",
   crowned: "Crowned tread",
   ribbed: "Ribbed tread",
+  balloon: "Balloon tread",
+  stepped: "Stepped tread",
 };
 const axleLengthLink = {width: 1, wheel_gap: 2, wheel_thickness: 2};
 const mm = (value) => `${Number(value.toFixed(2))} mm`;
@@ -372,7 +374,7 @@ $("#test-limits").textContent = MagtelPhysics.limitations;
 $("#variants-button").addEventListener("click", () => perform(async () => {
   const {variants} = await request("variants", {design: current.model.design});
   current.variants = variants;
-  current.activeVariant = null;
+  current.activeVariant = variants.findIndex((variant) => variant.variant === current.model.design.variant);
   renderVariants();
   message(`${variants.length} compatible variants ready.`, false, "#variant-status");
 }, "Generating compatible variants…", "#variant-status"));
