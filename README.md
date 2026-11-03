@@ -1,9 +1,9 @@
 # MAGTEL Toy Factory
 
-Tell MAGTEL what part you want, then change your mind in the same conversation.
-MAGTEL reads back the dimensions, saves an editable part, and can export an STL
-for your 3D printer's slicer. The CLI runs locally with no API key, model download,
-or runtime dependencies.
+Tell MAGTEL what part you want or how parts should fit together, then change
+your mind in the same conversation. MAGTEL reads back the dimensions, saves an
+editable design, and exports STL files for your slicer. The CLI runs locally
+with no API key, model download, or runtime dependencies.
 
 ## Get started
 
@@ -49,6 +49,52 @@ millimeters. Type `help` for workshop commands or `undo` to back up one edit.
 Existing files require explicit replacement with `save!`, `export!`, or the
 one-shot `--force` option.
 
+## Assemble a toy car
+
+Run `magtel` and enter these requests one line at a time:
+
+```text
+Build a toy car.
+Use an 80 x 30 x 12 mm chassis.
+Mount two 5.8 mm diameter, 60 mm long axles 55 mm apart.
+Put a 40 mm wheel, 10 mm thick, with a 6 mm hole on each end.
+Check the fit.
+Save car.magtel.json
+Export car.stl
+Export car-parts.zip
+Quit
+```
+
+The two axles run across the chassis, through bores sized for them. The
+wheelbase is the distance between the front and rear axles. MAGTEL places the
+wheels on the axle ends and checks for overlap, axle reach, bore clearance, and
+ground clearance. The chassis dimensions are length × width × height.
+
+Use `car.stl` to inspect the assembled geometry. Use `car-parts.zip` for
+separate STLs. The bundle includes one chassis design, one axle design to print
+twice, and one wheel design to print four times. The wheels use a slip fit.
+Plan how to retain them on the axles and test the clearances on your printer.
+
+Reopen the design with `magtel workshop car.magtel.json`, then try
+`Move the axles 58 mm apart` or `Leave 2 mm between each wheel and the chassis`.
+`Set axle clearance to 0.4 mm` sets the difference in diameter between the
+chassis bores and the axles. You can also reuse a saved part with
+`Use the wheels from "wheel.magtel.json"`, `Use the axles from "axle.magtel.json"`,
+or `Use the chassis from "block.magtel.json"`. Use a plain block for the chassis
+and an axle long enough to reach through both wheels.
+
+For one command, separate the requests with semicolons inside the quotation
+marks:
+
+```sh
+magtel assemble "Use an 80 x 30 x 12 mm chassis; mount two 5.8 mm diameter, 60 mm long axles 55 mm apart; put a 40 mm wheel, 10 mm thick, with a 6 mm hole on each end" -o car.magtel.json
+magtel fit car.magtel.json
+magtel export car.magtel.json -o car-parts.zip
+```
+
+Or open the [example car](examples/toy-car.magtel.json) with
+`magtel workshop examples/toy-car.magtel.json` from the source folder.
+
 ## Run it from scripts
 
 ```sh
@@ -80,10 +126,13 @@ Centimeters and inches are accepted and converted to millimeters. Block
 dimensions follow width × depth × height. Stud counts follow columns × rows.
 The studs are solid posts fused to the top of a flat-bottomed block.
 
-Version 0.1 uses a fixed vocabulary and part families. Unsupported descriptions
-return an error and leave the current part intact. The release exports
-triangulated STL and versioned MAGTEL JSON. Freeform sketches, general assemblies,
-drawings, STEP export, and SOLIDWORKS file import are outside this release.
+Version 0.2 uses a fixed vocabulary, part families, and a symmetric four-wheel
+car assembly. Both axles share one design and all four wheels share one design.
+Unsupported descriptions return an error and leave the current design intact.
+The release exports
+triangulated STL and versioned MAGTEL JSON. Freeform sketches, custom joints
+between arbitrary parts, drawings, STEP export, and SOLIDWORKS file import are
+outside this release.
 
 ## Contributing
 

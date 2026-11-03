@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import struct
+from collections.abc import Sequence
 from pathlib import Path
 
 from .model import ToySpec
@@ -160,11 +161,19 @@ def _normal(triangle: Triangle) -> Point:
 
 def write_stl(spec: ToySpec, destination: Path) -> None:
     """Write a binary STL mesh. STL coordinates use millimeters by convention."""
-    faces = mesh(spec)
+    write_mesh_stl(mesh(spec), destination)
+
+
+def write_mesh_stl(faces: Sequence[Triangle], destination: Path) -> None:
+    destination.write_bytes(stl_bytes(faces))
+
+
+def stl_bytes(faces: Sequence[Triangle]) -> bytes:
+    """Encode triangles as binary STL using millimeter coordinates."""
     header = b"MAGTEL Toy Factory | coordinates in millimeters".ljust(80, b"\0")
     payload = bytearray(header)
     payload.extend(struct.pack("<I", len(faces)))
     for face in faces:
         a, b, c = face
         payload.extend(_STL_FACET.pack(*_normal(face), *a, *b, *c, 0))
-    destination.write_bytes(payload)
+    return bytes(payload)

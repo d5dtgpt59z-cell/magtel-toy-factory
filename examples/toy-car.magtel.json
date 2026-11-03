@@ -1,0 +1,32 @@
+{
+  "format": "magtel-assembly",
+  "version": 1,
+  "units": "mm",
+  "assembly": {
+    "kind": "car",
+    "name": "Toy Car",
+    "chassis": {
+      "kind": "block",
+      "name": "Block",
+      "width": 80.0,
+      "depth": 30.0,
+      "height": 12.0
+    },
+    "axle": {
+      "kind": "axle",
+      "name": "Axle",
+      "diameter": 5.8,
+      "thickness": 60.0
+    },
+    "wheel": {
+      "kind": "wheel",
+      "name": "Wheel",
+      "diameter": 40.0,
+      "thickness": 10.0,
+      "hole": 6.0
+    },
+    "wheelbase": 55.0,
+    "wheel_gap": 1.0,
+    "axle_clearance": 0.4
+  }
+}
